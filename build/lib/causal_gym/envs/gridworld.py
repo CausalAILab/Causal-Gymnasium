@@ -1,12 +1,11 @@
 import gymnasium as gym
 from gymnasium import spaces
-import causal_gym
 from causal_gym import SCM
 import pygame
 import numpy as np
 
 
-class WindyGridWorldEnv(SCM):
+class GridWorldEnv(SCM):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, render_mode=None, size=5):
@@ -19,22 +18,11 @@ class WindyGridWorldEnv(SCM):
             {
                 "agent": spaces.Box(0, size - 1, shape=(2,), dtype=int),
                 "target": spaces.Box(0, size - 1, shape=(2,), dtype=int),
-                "wind": spaces.Discrete(5),                        }
+            }
         )
 
-        # We have 4 actions, corresponding to "right", "up", "left", "down", "right"
+        # We have 4 actions, corresponding to "right", "up", "left", "down"
         self.action_space = spaces.Discrete(4)
-        self.wind_space = np.array([0, 1, 2, 3, 4], dtype=int)
-
-        self.wind_strength = [0.6, 0.1, 0.1, 0.1, 0.1]
-
-        self._wind_to_direction = {
-            0: np.array([0, 0]), #stop
-            1: np.array([1, 0]),  #right
-            2: np.array([0, 1]),  #down
-            3: np.array([-1, 0]), #left
-            4: np.array([0, -1]), #up
-        }
 
         """
         The following dictionary maps abstract actions from `self.action_space` to 
@@ -42,18 +30,11 @@ class WindyGridWorldEnv(SCM):
         I.e. 0 corresponds to "right", 1 to "up" etc.
         """
         self._action_to_direction = {
-            0: np.array([0, 0]), #stop
-            1: np.array([1, 0]),  #right
-            2: np.array([0, 1]),  #down
-            3: np.array([-1, 0]), #left
-            4: np.array([0, -1]), #up
+            0: np.array([1, 0]),  #right
+            1: np.array([0, 1]),  #down
+            2: np.array([-1, 0]), #left
+            3: np.array([0, -1]), #up
         }
-
-        """
-        Behavior agent's natural policy
-        """
-        with open('windy_gridworld_optimal.npy', 'rb') as f:
-            self._policy = np.load(f)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -69,7 +50,7 @@ class WindyGridWorldEnv(SCM):
         self.clock = None
 
     def _get_obs(self):
-        return {"agent": self._agent_location, "target": self._target_location, "wind": self._wind_direction}
+        return {"agent": self._agent_location, "target": self._target_location}
 
     def _get_info(self):
         return {
@@ -79,26 +60,25 @@ class WindyGridWorldEnv(SCM):
         }
 
     def action(self):
-        return self._policy[self._agent_location[0], self._agent_location[1], self._wind_direction]
+        return self.action_space.sample()
     
     def observation(self):
         return self._get_obs()
     
     def see(self):
-        action = self.action()
-        next_state, reward, done, terminated, info = self.step(action)
-        return action, next_state, reward, done, terminated, info
+        return self.step(self.action())
     
     def do(self, action):
-        next_state, reward, done, terminated, info = self.step(action)
-        return next_state, reward, done, terminated, info 
+        return self.step(action)
     
     def reset(self, seed=None, options=None, agent_location=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         # Choose the target's location uniformly at center
-        self._target_location = np.array([self.size / 2, self.size - 1], dtype=int)
+        self._target_location = self.np_random.integers(
+                    0, self.size, size=2, dtype=int
+                )
 
         if agent_location is not None:
             self._agent_location = agent_location
@@ -109,8 +89,6 @@ class WindyGridWorldEnv(SCM):
                     0, self.size, size=2, dtype=int
                 )
 
-        self._wind_direction = np.random.choice(self.wind_space, 1, p=self.wind_strength)[0]
-
         observation = self._get_obs()
         info = self._get_info()
 
@@ -120,10 +98,8 @@ class WindyGridWorldEnv(SCM):
         return observation, info
 
     def step(self, action):
-
         # Map the action (element of {0,1,2,3}) to the direction we walk in
         direction = self._action_to_direction[action]
-        wind = self._wind_to_direction[self._wind_direction]
 
         #if self._wind_direction == 0:
         # We use `np.clip` to make sure we don't leave the grid:
@@ -138,12 +114,11 @@ class WindyGridWorldEnv(SCM):
 
         #if action != 0:
         self._agent_location = np.clip(
-            self._agent_location + direction + wind, 0, self.size - 1
+            self._agent_location + direction, 0, self.size - 1
         )
 
         # An episode is done iff the agent has reached the target
         done = np.array_equal(self._agent_location, self._target_location)
-        self._wind_direction = np.random.choice(self.wind_space, 1, p=self.wind_strength)[0]
         observation = self._get_obs()
         info = self._get_info()
 

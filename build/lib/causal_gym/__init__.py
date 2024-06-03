@@ -19,3 +19,9 @@ register(
     entry_point="causal_gym.envs:WindyGridWorldEnv",
     max_episode_steps=10,
 )
+
+register(
+    id="causal_gym/GridWorld-v0",
+    entry_point="causal_gym.envs:GridWorldEnv",
+    max_episode_steps=10,
+)

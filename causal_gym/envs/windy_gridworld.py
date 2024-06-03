@@ -49,6 +49,12 @@ class WindyGridWorldEnv(SCM):
             4: np.array([0, -1]), #up
         }
 
+        """
+        Behavior agent's natural policy
+        """
+        with open('windy_gridworld_optimal.npy', 'rb') as f:
+            self._policy = np.load(f)
+
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
@@ -73,29 +79,35 @@ class WindyGridWorldEnv(SCM):
         }
 
     def action(self):
-        return self.action_space.sample()
+        return self._policy[self._agent_location[0], self._agent_location[1], self._wind_direction]
     
     def observation(self):
         return self._get_obs()
     
     def see(self):
-        return self.step(self.action())
+        action = self.action()
+        next_state, reward, done, terminated, info = self.step(action)
+        return action, next_state, reward, done, terminated, info
     
     def do(self, action):
-        return self.step(action)
+        next_state, reward, done, terminated, info = self.step(action)
+        return next_state, reward, done, terminated, info 
     
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, agent_location=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         # Choose the target's location uniformly at center
         self._target_location = np.array([self.size / 2, self.size - 1], dtype=int)
 
-        self._agent_location = self._target_location
-        while np.array_equal(self._agent_location, self._target_location):
-            self._agent_location = self.np_random.integers(
-                0, self.size, size=2, dtype=int
-            )
+        if agent_location is not None:
+            self._agent_location = agent_location
+        else:
+            self._agent_location = self._target_location
+            while np.array_equal(self._agent_location, self._target_location):
+                self._agent_location = self.np_random.integers(
+                    0, self.size, size=2, dtype=int
+                )
 
         self._wind_direction = np.random.choice(self.wind_space, 1, p=self.wind_strength)[0]
 
@@ -108,6 +120,7 @@ class WindyGridWorldEnv(SCM):
         return observation, info
 
     def step(self, action):
+
         # Map the action (element of {0,1,2,3}) to the direction we walk in
         direction = self._action_to_direction[action]
         wind = self._wind_to_direction[self._wind_direction]
@@ -144,15 +157,17 @@ class WindyGridWorldEnv(SCM):
             return self._render_frame()
 
     def _render_frame(self):
+        offset = 50
+
         if self.window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
+            self.window = pygame.display.set_mode((self.window_size + 2*offset, self.window_size + 2*offset))
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
-        canvas = pygame.Surface((self.window_size, self.window_size))
-        canvas.fill((255, 255, 255))
+        canvas = pygame.Surface((self.window_size + 2*offset, self.window_size + 2*offset))
+        canvas.fill((0, 0, 0))
         pix_square_size = (
             self.window_size / self.size
         )  # The size of a single grid square in pixels
@@ -160,36 +175,74 @@ class WindyGridWorldEnv(SCM):
         # First we draw the target
         pygame.draw.rect(
             canvas,
-            (255, 0, 0),
+            (50, 205, 50),
             pygame.Rect(
-                pix_square_size * self._target_location,
+                self._target_location * pix_square_size + offset,
                 (pix_square_size, pix_square_size),
             ),
         )
         # Now we draw the agent
         pygame.draw.circle(
             canvas,
-            (0, 0, 255),
-            (self._agent_location + 0.5) * pix_square_size,
+            (255, 69, 0),
+            (self._agent_location + 0.5) * pix_square_size + offset,
             pix_square_size / 3,
         )
 
         # Finally, add some gridlines
-        for x in range(self.size + 1):
+        for x in range(1, self.size + 2):
+            
             pygame.draw.line(
                 canvas,
-                0,
-                (0, pix_square_size * x),
-                (self.window_size, pix_square_size * x),
-                width=3,
+                (112, 112, 112),
+                (offset, pix_square_size * x + offset),
+                (self.window_size + offset, pix_square_size * x + offset),
+                width=5,
             )
+
             pygame.draw.line(
                 canvas,
-                0,
-                (pix_square_size * x, 0),
-                (pix_square_size * x, self.window_size),
-                width=3,
+                (112, 112, 112),
+                (pix_square_size * x + offset, offset),
+                (pix_square_size * x + offset, self.window_size + offset),
+                width=5,
             )
+
+        pygame.draw.rect(
+            canvas,
+            (112, 112, 112),
+            pygame.Rect(
+                np.array([0, 0], dtype=int),
+                (self.window_size + 2*offset, offset),
+            ),
+        )
+        
+        pygame.draw.rect(
+            canvas,
+            (112, 112, 112),
+            pygame.Rect(
+                np.array([0, 0], dtype=int),
+                (offset, self.window_size + 2*offset),
+            ),
+        )
+
+        pygame.draw.rect(
+            canvas,
+            (112, 112, 112),
+            pygame.Rect(
+                np.array([self.window_size + offset, 0], dtype=int),
+                (offset, self.window_size + 2*offset),
+            ),
+        )
+
+        pygame.draw.rect(
+            canvas,
+            (112, 112, 112),
+            pygame.Rect(
+                np.array([0, self.window_size + offset], dtype=int),
+                (self.window_size + 2*offset, offset),
+            ),
+        )
 
         if self.render_mode == "human":
             # The following line copies our drawings from `canvas` to the visible window
@@ -209,3 +262,4 @@ class WindyGridWorldEnv(SCM):
         if self.window is not None:
             pygame.display.quit()
             pygame.quit()
+

@@ -2,4 +2,7 @@
 causal-gym
 
 ## Installation
-At the project root directory, type in _"pip install ."_
+At the project root directory, type in 
+```
+pip install .
+```

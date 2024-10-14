@@ -1,12 +1,23 @@
+import math
 import numpy as np
-import minigrid as mg
-import gymnasium as gym
 
+from typing import Any, Union
 from enum import IntEnum
-from minigrid.minigrid_env import MiniGridEnv
-from gymnasium import spaces
 from causal_gym import SCM
 from causal_gym.core import PolicyType, ActType, ObsType
+from minigrid.minigrid_env import MiniGridEnv
+from minigrid.utils.window import Window
+from minigrid.core.world_object import WorldObj
+from minigrid.utils.rendering import (
+    downsample,
+    fill_coords,
+    highlight_img,
+    point_in_rect,
+    point_in_triangle,
+    rotate_fn,
+)
+from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
+
 
 WIND_DIST = (.1, .1, .1, .1, .6)
 # Map agent's direction to short string
@@ -81,37 +92,38 @@ class WindyMiniGrid(SCM):
         # Done completing task
         done = 6
 
-    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, wind_dist: tuple = WIND_DIST):
-        super().__init__(policy, env)
-        assert isinstance(env, MiniGridEnv), f"{env} is not a MiniGridEnv!"
-
+    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: tuple = WIND_DIST):
+        assert issubclass(env.unwrapped.__class__, MiniGridEnv), f"Input env must be of type 'MiniGridEnv'!"
+        self._env = env
         self._wind_dist = wind_dist
-
         self.actions = MiniGridEnv.Actions
-
+        # whether to display wind direction at rendering time
+        self._show_wind = show_wind
         if policy is not None:
             self._policy = policy
         else:
             # stand still, yield control to the wind
             self._policy = dummy_behavioral_policy
 
-    def __getattribute__(self, name: str) -> np.Any:
-        return self._env.__getattribute__(name)
+    def __getattr__(self, name: str) -> Any:
+        if name == "_np_random":
+            raise AttributeError(
+                "Can't access `_np_random` of a wrapper, use `self.unwrapped._np_random` or `self.np_random`."
+            )
+        elif name.startswith("_"):
+            raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+        return self._env.__getattr__(name)
     
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
         obs, info = self._env.reset(seed = seed, options=options)
         self._internal_state = self._get_internal_state()
         self.rng = np.random.default_rng(seed)
-        # self.target_location = (1, 2)
-        # self.agent_location = (0, 0)
-        # self.agent_location = self.rng.choice([(i, j) for i, j in np.ndindex((self.size, self.size)) if (i, j) != self.target_location])
-        self.num_steps = 0
         self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
-
-        return obs, info + {'wind': self._wind_direction}
+        info['wind'] = self._wind_direction
+        return obs, info
 
     def _get_internal_state(self) -> dict:
-        return {"agent_pos": self._env.agent_pos, "agent_dir": self._env.agent_dir, "map": self._env.grid}
+        return {"agent_pos": self._env.unwrapped.agent_pos, "agent_dir": self._env.unwrapped.agent_dir, "map": self._env.unwrapped.grid}
     
     @property
     def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
@@ -148,12 +160,11 @@ class WindyMiniGrid(SCM):
             truncated = truncated or truncated_tmp
             if terminated or truncated:
                 break
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
         return next_state_tmp, reward, terminated, truncated, info_tmp
     
     def _wind_to_actions(self) -> tuple[int]:
         # AGENT_DIR_TO_STR = {0: ">", 1: "V", 2: "<", 3: "^"}
-        agent_dir = self._env.agent_dir
+        agent_dir = self._env.unwrapped.agent_dir
         if agent_dir == self._wind_direction:
             # following wind
             return [self.actions.forward, self.actions.forward]
@@ -176,7 +187,8 @@ class WindyMiniGrid(SCM):
         next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
         # update wind direction
         self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
-        return action, next_state, reward, terminated, truncated, info + {'wind': self._wind_direction}
+        info['wind'] = self._wind_direction
+        return action, next_state, reward, terminated, truncated, info
     
     def do(self, action):
         # only add wind when moving forward, turning around or other move won't be affected by wind
@@ -186,5 +198,83 @@ class WindyMiniGrid(SCM):
             wind_actions = [action]
         next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
         # update wind direction
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
-        return next_state, reward, terminated, truncated, info + {'wind': self._wind_direction}
+        info['wind'] = self._wind_direction
+        return next_state, reward, terminated, truncated, info
+    
+    @classmethod
+    def render_wind_tile(
+        cls,
+        obj: Union[WorldObj, None],
+        agent_dir: Union[int, None] = None,
+        highlight: bool = False,
+        tile_size: int = TILE_PIXELS,
+        subdivs: int = 3,
+    ) -> np.ndarray:
+        """
+        Render the wind dir tile
+        """
+
+        # Hash map lookup key for the cache
+        key: tuple[Any, ...] = (agent_dir, highlight, tile_size)
+        key = obj.encode() + key if obj else key
+
+        img = np.zeros(
+            shape=(tile_size * subdivs, tile_size * subdivs, 3), dtype=np.uint8
+        )
+
+        # Draw the grid lines (top and left edges)
+        fill_coords(img, point_in_rect(0, 0.031, 0, 1), (100, 100, 100))
+        fill_coords(img, point_in_rect(0, 1, 0, 0.031), (100, 100, 100))
+
+        if obj is not None:
+            obj.render(img)
+
+        # Overlay the agent on top
+        if agent_dir is not None:
+            tri_fn = point_in_triangle(
+                (0.12, 0.19),
+                (0.87, 0.50),
+                (0.12, 0.81),
+            )
+
+            # Rotate the agent based on its direction
+            tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
+            fill_coords(img, tri_fn, (115, 193, 255))
+
+        # Highlight the cell if needed
+        if highlight:
+            highlight_img(img)
+
+        # Downsample the image to perform supersampling/anti-aliasing
+        img = downsample(img, subdivs)
+
+        return img
+    
+    def render(self):
+        img = self._env.unwrapped.get_frame(self._env.unwrapped.highlight, self._env.unwrapped.tile_size, self._env.unwrapped.agent_pov)
+
+        if self._show_wind:
+            # Wind direction is rendered as a blue arrow on the upper left corner of the map 
+            # where there is a wall tile
+            tile_img = WindyMiniGrid.render_wind_tile(
+                obj=self._env.unwrapped.grid.get(0, 0),
+                agent_dir=self._wind_direction,
+                highlight=0,
+                tile_size=self._env.unwrapped.tile_size,
+            )
+            i = 0
+            j = 0
+            ymin = j * self._env.unwrapped.tile_size
+            ymax = (j + 1) * self._env.unwrapped.tile_size
+            xmin = i * self._env.unwrapped.tile_size
+            xmax = (i + 1) * self._env.unwrapped.tile_size
+            img[ymin:ymax, xmin:xmax, :] = tile_img
+
+        if self._env.unwrapped.render_mode == "human":
+            if self.window is None:
+                self.window = Window("minigrid")
+                self.window.show(block=False)
+            self.window.set_caption(self.mission)
+            self.window.show_img(img)
+        elif self._env.unwrapped.render_mode == "rgb_array":
+            return img

@@ -163,6 +163,9 @@ class WindyMiniGrid(SCM):
         return next_state_tmp, reward, terminated, truncated, info_tmp
     
     def _wind_to_actions(self) -> tuple[int]:
+        if self._wind_direction == 4:
+            # no wind
+            return [self.actions.forward]
         # AGENT_DIR_TO_STR = {0: ">", 1: "V", 2: "<", 3: "^"}
         agent_dir = self._env.unwrapped.agent_dir
         if agent_dir == self._wind_direction:
@@ -186,6 +189,7 @@ class WindyMiniGrid(SCM):
             wind_actions = [action]
         next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
         # update wind direction
+        # self._wind_direction_render = self._wind_direction
         self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
         info['wind'] = self._wind_direction
         return action, next_state, reward, terminated, truncated, info
@@ -198,6 +202,8 @@ class WindyMiniGrid(SCM):
             wind_actions = [action]
         next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
         # update wind direction
+        # self._wind_direction_render = self._wind_direction
+        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
         info['wind'] = self._wind_direction
         return next_state, reward, terminated, truncated, info
     
@@ -253,11 +259,12 @@ class WindyMiniGrid(SCM):
     def render(self):
         img = self._env.unwrapped.get_frame(self._env.unwrapped.highlight, self._env.unwrapped.tile_size, self._env.unwrapped.agent_pov)
 
-        if self._show_wind:
+        if self._show_wind and self._wind_direction != 4:
             # Wind direction is rendered as a blue arrow on the upper left corner of the map 
             # where there is a wall tile
             tile_img = WindyMiniGrid.render_wind_tile(
                 obj=self._env.unwrapped.grid.get(0, 0),
+                # agent_dir=self._wind_direction_render,
                 agent_dir=self._wind_direction,
                 highlight=0,
                 tile_size=self._env.unwrapped.tile_size,

@@ -1,15 +1,13 @@
 import math
 import numpy as np
 
-from typing import Any, Union
-from enum import IntEnum
 from causal_gym import SCM
 from causal_gym.core import PolicyType, ActType, ObsType
 
 class MDPExample(SCM):
     """
     A confounded MDP from CRL book Chap. 7 Example 7.2.
-    See also the inventory control example from Csaba 2010 Algos for RL Example 1.
+    See also the inventory control example from Csaba 2010 - Algos for RL, Example 1.
     By default the behavioral policy observes both the state 
     and the confounder between state and reward.
 

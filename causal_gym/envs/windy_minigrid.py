@@ -1,13 +1,16 @@
 import math
 import numpy as np
-
-from typing import Any, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union, Any
+from gymnasium import Env, logger
+from gymnasium.core import ActType, ObsType
+from gymnasium.error import DependencyNotInstalled
+from gymnasium.logger import deprecation
 from enum import IntEnum
 from causal_gym import SCM
 from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
-from minigrid.utils.window import Window
 from minigrid.core.world_object import WorldObj
+from minigrid.core.actions import Actions
 from minigrid.utils.rendering import (
     downsample,
     fill_coords,
@@ -74,7 +77,7 @@ class WindyMiniGrid(SCM):
     2. Timeout (see `max_steps`).
 
     """
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
     # Enumeration of possible actions
     class Actions(IntEnum):
@@ -94,9 +97,11 @@ class WindyMiniGrid(SCM):
 
     def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: tuple = WIND_DIST):
         assert issubclass(env.unwrapped.__class__, MiniGridEnv), f"Input env must be of type 'MiniGridEnv'!"
+        self.spec = env.spec
         self._env = env
         self._wind_dist = wind_dist
-        self.actions = MiniGridEnv.Actions
+        self.actions = Actions
+        self.render_mode = self._env.unwrapped.render_mode
         # whether to display wind direction at rendering time
         self._show_wind = show_wind
         if policy is not None:
@@ -112,7 +117,7 @@ class WindyMiniGrid(SCM):
             )
         elif name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
-        return self._env.__getattr__(name)
+        return self._env.__getattribute__(name)
     
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
         obs, info = self._env.reset(seed = seed, options=options)
@@ -207,6 +212,10 @@ class WindyMiniGrid(SCM):
         info['wind'] = self._wind_direction
         return next_state, reward, terminated, truncated, info
     
+    def step(self, action):
+        # for backward compatability with gym APIs
+        return self.do(action)
+    
     @classmethod
     def render_wind_tile(
         cls,
@@ -278,10 +287,6 @@ class WindyMiniGrid(SCM):
             img[ymin:ymax, xmin:xmax, :] = tile_img
 
         if self._env.unwrapped.render_mode == "human":
-            if self.window is None:
-                self.window = Window("minigrid")
-                self.window.show(block=False)
-            self.window.set_caption(self.mission)
-            self.window.show_img(img)
+            raise NotImplementedError
         elif self._env.unwrapped.render_mode == "rgb_array":
             return img

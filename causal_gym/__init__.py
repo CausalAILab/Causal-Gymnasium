@@ -1,6 +1,7 @@
 from gymnasium.envs.registration import register
 from causal_gym.core import (
     SCM,
+    PCH,
     SCMWrapper,
     ActionSCMWrapper,
     ObservationSCMWrapper,

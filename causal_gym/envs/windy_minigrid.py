@@ -6,7 +6,7 @@ from gymnasium.core import ActType, ObsType
 from gymnasium.error import DependencyNotInstalled
 from gymnasium.logger import deprecation
 from enum import IntEnum
-from causal_gym import SCM
+from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.world_object import WorldObj
@@ -29,11 +29,11 @@ AGENT_DIR_TO_STR = {0: ">", 1: "V", 2: "<", 3: "^"}
 def dummy_behavioral_policy(*args, **kwargs):
     return 6
 
-class WindyMiniGrid(SCM):
+class WindyMiniGridSCM(SCM):
     """
     A windy minigrid world!
     Takes a minigrid environment as input, add winds to the transitions.
-    By default, the behavioral policy (policy) is none and the behavioral agent will move by the wind.
+    By default, the behavioral policy (policy) is none and the behavioral agent will stand still.
 
     ## Wind Direction
 
@@ -185,21 +185,7 @@ class WindyMiniGrid(SCM):
             # wind blowing sideways
             return [self.actions.forward, first_turn, self.actions.forward, second_turn] 
     
-    def see(self):
-        # only add wind when moving forward, turning around or other move won't be affected by wind
-        action = self.action()
-        if action == self.actions.forward:
-            wind_actions = self._wind_to_actions()
-        else:
-            wind_actions = [action]
-        next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
-        # update wind direction
-        # self._wind_direction_render = self._wind_direction
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
-        info['wind'] = self._wind_direction
-        return action, next_state, reward, terminated, truncated, info
-    
-    def do(self, action):
+    def step(self, action):
         # only add wind when moving forward, turning around or other move won't be affected by wind
         if action == self.actions.forward:
             wind_actions = self._wind_to_actions()
@@ -211,10 +197,6 @@ class WindyMiniGrid(SCM):
         self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
         info['wind'] = self._wind_direction
         return next_state, reward, terminated, truncated, info
-    
-    def step(self, action):
-        # for backward compatability with gym APIs
-        return self.do(action)
     
     @classmethod
     def render_wind_tile(
@@ -290,3 +272,21 @@ class WindyMiniGrid(SCM):
             raise NotImplementedError
         elif self._env.unwrapped.render_mode == "rgb_array":
             return img
+    
+
+class WindyMiniGridPCH(PCH):
+    
+        
+    def see(self):
+        # only add wind when moving forward, turning around or other move won't be affected by wind
+        action = self.action()
+        if action == self.actions.forward:
+            wind_actions = self._wind_to_actions()
+        else:
+            wind_actions = [action]
+        next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
+        # update wind direction
+        # self._wind_direction_render = self._wind_direction
+        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
+        info['wind'] = self._wind_direction
+        return action, next_state, reward, terminated, truncated, info

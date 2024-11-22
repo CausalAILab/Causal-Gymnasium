@@ -1,4 +1,4 @@
-"""Core API for SCM Environment, SCMWrapper, ActionSCMWrapper, RewardSCMWrapper and ObservationSCMWrapper."""
+"""Core API for SCM Environment, PCHWrapper, ActionPCHWrapper, RewardPCHWrapper and ObservationPCHWrapper."""
 from __future__ import annotations
 
 import numpy as np
@@ -38,15 +38,13 @@ class SCM(
 ):
     r"""The main Causal-Gym class for implementing SCM environments.
 
-    The class encapsulates an environment with arbitrary causal mechanisms and interaction regimes through the :meth:`see` and :meth:`do` functions.
+    The class encapsulates an environment with arbitrary causal mechanisms.
     An environment can be partially or fully observed by single agents.
 
-    The main API methods that users of this class need to know are:
-
+    The main API methods that users of this class need to know are (other than the standard gymnasium APIs):
+    - :meth:`observation` = Return the rendered environment observations at the current stage (potentially using render() APIs).
     - :meth:`action` - Sample an action from the behavior policy given the current state of the environment.
-    - :meth:`observation` - Resturn the observed state of the environment at the current stage of action.
-    - :meth:`see` - Updates an environment following the behavior policy returning the realized action, the next agent observation, the reward for taking that actions,
-    - :meth:`do` - Updates an environment with actions returning the next agent observation, the reward for taking that actions.
+    - :meth:`get_graph` - Generate the causal diagram of the underlying environment.
 
     Environments have additional attributes for users to understand the implementation
 
@@ -77,12 +75,123 @@ class SCM(
         raise NotImplementedError
     
     def observation(self) -> ObsType:
-        """Sample an action from the behavior policy given an observed state.
+        """Get the current observations.
         
         Returns:
             observation (ObsType): An element of the environment's :attr:`observation_space` as the current state of the environment.
         """
         raise NotImplementedError
+    
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[ObsType, dict[str, Any]]:  # type: ignore
+        """Resets the environment to an initial internal state, returning an initial observation and info.
+
+        This method generates a new starting state often with some randomness to ensure that the agent explores the
+        state space and learns a generalised policy about the environment. This randomness can be controlled
+        with the ``seed`` parameter otherwise if the environment already has a random number generator and
+        :meth:`reset` is called with ``seed=None``, the RNG is not reset.
+
+        Therefore, :meth:`reset` should (in the typical use case) be called with a seed right after initialization and then never again.
+
+        For Custom environments, the first line of :meth:`reset` should be ``super().reset(seed=seed)`` which implements
+        the seeding correctly.
+
+        .. versionchanged:: v0.25
+
+            The ``return_info`` parameter was removed and now info is expected to be returned.
+
+        Args:
+            seed (optional int): The seed that is used to initialize the environment's PRNG (`np_random`).
+                If the environment does not already have a PRNG and ``seed=None`` (the default option) is passed,
+                a seed will be chosen from some source of entropy (e.g. timestamp or /dev/urandom).
+                However, if the environment already has a PRNG and ``seed=None`` is passed, the PRNG will *not* be reset.
+                If you pass an integer, the PRNG will be reset even if it already exists.
+                Usually, you want to pass an integer *right after the environment has been initialized and then never again*.
+                Please refer to the minimal example above to see this paradigm in action.
+            options (optional dict): Additional information to specify how the environment is reset (optional,
+                depending on the specific environment)
+
+        Returns:
+            observation (ObsType): Observation of the initial state. This will be an element of :attr:`observation_space`
+                (typically a numpy array) and is analogous to the observation returned by :meth:`step`.
+            info (dictionary):  This dictionary contains auxiliary information complementing ``observation``. It should be analogous to
+                the ``info`` returned by :meth:`step`.
+        """
+        # Initialize the RNG if the seed is manually passed
+        if seed is not None:
+            self._np_random, seed = seeding.np_random(seed)
+        return super().reset(seed=seed, options=options)
+
+    @property
+    def np_random(self) -> np.random.Generator:
+        """Returns the environment's internal :attr:`_np_random` that if not set will initialise with a random seed.
+
+        Returns:
+            Instances of `np.random.Generator`
+        """
+        if self._np_random is None:
+            self._np_random, _ = seeding.np_random()
+        return self._np_random
+
+    @np_random.setter
+    def np_random(self, value: np.random.Generator):
+        self._np_random = value
+    
+    @property
+    def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
+        """Return the causal diagram of the environment.
+        Returns:
+            Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
+            base_graph: an extended adjacent matrix representation of the directed graphical structure.  
+                G[i,j] = -1 i<-j
+                G[i,j] = 0 i j
+                G[i,j] = 1 i->j
+            conf_graph: a matrix representing the existence of confounders between nodes.
+                G[i, j] = 0 no confounder
+                G[i, j] = 1 i<->j
+        """
+        raise NotImplementedError
+    
+    @property
+    def unwrapped(self,) -> Union[Env[ObsType, ActType], Generic[PolicyType, ObsType, ActType]]:
+        # This will return the underlying environment without wrappers
+        if isinstance(self._env, Wrapper):
+            return self._env.unwrapped
+        else:
+            return self
+        
+
+WrapperObsType = TypeVar("WrapperObsType")
+WrapperActType = TypeVar("WrapperActType")
+WrapperPolicyType = TypeVar("WrapperPolicyType")
+
+class PCH(    
+    Wrapper[WrapperObsType, WrapperActType, ObsType, ActType],
+    Generic[WrapperPolicyType, WrapperObsType, WrapperActType, PolicyType, ObsType, ActType],
+):
+    """
+    The main class for interacting with SCMs.
+    Currently we support L1 and L2 interactions, namely,
+        - :meth:`see` - Updates an environment following the behavior policy returning the realized action, the next agent observation, the reward for taking that actions,
+        - :meth:`do` - Updates an environment with actions returning the next agent observation, the reward for taking that actions.
+    """
+    def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
+        """Wraps an environment to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
+
+        Args:
+            env: The environment to wrap
+        """
+        self.env = env
+
+        assert isinstance(env.unwrapped, SCM)
+
+        self._policy: WrapperPolicyType | None = None
+
+        Wrapper.__init__(self, env)
 
     def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.
@@ -144,103 +253,15 @@ class SCM(
                 a certain timelimit was exceeded, or the physics simulation has entered an invalid state.
         """  
         raise NotImplementedError
-    
-    def reset(
-        self,
-        *,
-        seed: int | None = None,
-        options: dict[str, Any] | None = None,
-    ) -> tuple[ObsType, dict[str, Any]]:  # type: ignore
-        """Resets the environment to an initial internal state, returning an initial observation and info.
-
-        This method generates a new starting state often with some randomness to ensure that the agent explores the
-        state space and learns a generalised policy about the environment. This randomness can be controlled
-        with the ``seed`` parameter otherwise if the environment already has a random number generator and
-        :meth:`reset` is called with ``seed=None``, the RNG is not reset.
-
-        Therefore, :meth:`reset` should (in the typical use case) be called with a seed right after initialization and then never again.
-
-        For Custom environments, the first line of :meth:`reset` should be ``super().reset(seed=seed)`` which implements
-        the seeding correctly.
-
-        .. versionchanged:: v0.25
-
-            The ``return_info`` parameter was removed and now info is expected to be returned.
-
-        Args:
-            seed (optional int): The seed that is used to initialize the environment's PRNG (`np_random`).
-                If the environment does not already have a PRNG and ``seed=None`` (the default option) is passed,
-                a seed will be chosen from some source of entropy (e.g. timestamp or /dev/urandom).
-                However, if the environment already has a PRNG and ``seed=None`` is passed, the PRNG will *not* be reset.
-                If you pass an integer, the PRNG will be reset even if it already exists.
-                Usually, you want to pass an integer *right after the environment has been initialized and then never again*.
-                Please refer to the minimal example above to see this paradigm in action.
-            options (optional dict): Additional information to specify how the environment is reset (optional,
-                depending on the specific environment)
-
-        Returns:
-            observation (ObsType): Observation of the initial state. This will be an element of :attr:`observation_space`
-                (typically a numpy array) and is analogous to the observation returned by :meth:`step`.
-            info (dictionary):  This dictionary contains auxiliary information complementing ``observation``. It should be analogous to
-                the ``info`` returned by :meth:`step`.
-        """
-        # Initialize the RNG if the seed is manually passed
-        if seed is not None:
-            self._np_random, seed = seeding.np_random(seed)
-
-    @property
-    def np_random(self) -> np.random.Generator:
-        """Returns the environment's internal :attr:`_np_random` that if not set will initialise with a random seed.
-
-        Returns:
-            Instances of `np.random.Generator`
-        """
-        if self._np_random is None:
-            self._np_random, _ = seeding.np_random()
-        return self._np_random
-
-    @np_random.setter
-    def np_random(self, value: np.random.Generator):
-        self._np_random = value
-    
-    @property
-    def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
-        """Return the causal diagram of the environment.
-        Returns:
-            Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
-            base_graph: an extended adjacent matrix representation of the directed graphical structure.  
-                G[i,j] = -1 i<-j
-                G[i,j] = 0 i j
-                G[i,j] = 1 i->j
-            conf_graph: a matrix representing the existence of confounders between nodes.
-                G[i, j] = 0 no confounder
-                G[i, j] = 1 i<->j
-        """
-        raise NotImplementedError
-    
-    @property
-    def unwrapped(self,) -> Union[Env[ObsType, ActType], Generic[PolicyType, ObsType, ActType]]:
-        # This will return the underlying environment without wrappers
-        if isinstance(self._env, Wrapper):
-            return self._env.unwrapped
-        else:
-            return self
 
 
-WrapperObsType = TypeVar("WrapperObsType")
-WrapperActType = TypeVar("WrapperActType")
-WrapperPolicyType = TypeVar("WrapperPolicyType")
-
-
-class SCMWrapper(
-    SCM[PolicyType, ObsType, ActType], 
-    Wrapper[WrapperObsType, WrapperActType, ObsType, ActType],
-    Generic[WrapperPolicyType, WrapperObsType, WrapperActType, PolicyType, ObsType, ActType],
+class PCHWrapper(
+    PCH[PolicyType, ObsType, ActType]
 ):
-    """Wraps a :class:`causal_gym.SCM` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
+    """Wraps a :class:`causal_gym.PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
     This class is the base class of all wrappers to change the behavior of the underlying SCM.
-    SCMWrappers that inherit from this class can modify the :attr:`action_space`, :attr:`observation_space`,
+    PCHWrappers that inherit from this class can modify the :attr:`action_space`, :attr:`observation_space`,
     :attr:`reward_range`, :attr:`metadata` and :attr:`policy` attributes, without changing the underlying SCM's attributes.
     Moreover, the behavior of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods can be changed by these wrappers.
 
@@ -248,7 +269,7 @@ class SCMWrapper(
     (i.e. to the corresponding attributes of :attr:`env`).
 
     Note:
-        If you inherit from :class:`SCMWrapper`, don't forget to call ``super().__init__(env)``
+        If you inherit from :class:`PCHWrapper`, don't forget to call ``super().__init__(env)``
     """
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
@@ -296,13 +317,13 @@ class SCMWrapper(
         return self.env.unwrapped
 
 
-class ObservationSCMWrapper(
-    SCMWrapper[PolicyType, WrapperObsType, ActType, PolicyType, ObsType, ActType], 
+class ObservationPCHWrapper(
+    PCHWrapper[PolicyType, WrapperObsType, ActType, PolicyType, ObsType, ActType], 
 ):
     """Modify observations from :meth:`Env.see` and :meth:`Env.do` using :meth:`wrap_observation` function.
 
     If you would like to apply a function to only the observation before
-    passing it to the learning code, you can simply inherit from :class:`ObservationSCMWrapper` and overwrite the method
+    passing it to the learning code, you can simply inherit from :class:`ObservationPCHWrapper` and overwrite the method
     :meth:`wrap_observation` to implement that transformation. The transformation defined in that method must be
     reflected by the :attr:`env` observation space. Otherwise, you need to specify the new observation space of the
     wrapper by setting :attr:`self.observation_space` in the :meth:`__init__` method of your wrapper.
@@ -310,7 +331,7 @@ class ObservationSCMWrapper(
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the observation wrapper."""
-        SCMWrapper.__init__(self, env)
+        PCHWrapper.__init__(self, env)
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -351,13 +372,13 @@ class ObservationSCMWrapper(
         """
         raise NotImplementedError
 
-class RewardSCMWrapper(
-    SCMWrapper[PolicyType, ObsType, ActType, PolicyType, ObsType, ActType], 
+class RewardPCHWrapper(
+    PCHWrapper[PolicyType, ObsType, ActType, PolicyType, ObsType, ActType], 
 ):
     """Superclass of wrappers that can modify the returning reward from one stage of interaction.
 
     If you would like to apply a function to the reward that is returned by the base environment before
-    passing it to learning code, you can simply inherit from :class:`RewardSCMWrapper` and overwrite the method
+    passing it to learning code, you can simply inherit from :class:`RewardPCHWrapper` and overwrite the method
     :meth:`wrap_reward` to implement that transformation.
     This transformation might change the :attr:`reward_range`; to specify the :attr:`reward_range` of your wrapper,
     you can simply define :attr:`self.reward_range` in :meth:`__init__`.
@@ -365,7 +386,7 @@ class RewardSCMWrapper(
         
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the Reward wrapper."""
-        SCMWrapper.__init__(self, env)
+        PCHWrapper.__init__(self, env)
 
     def step(
         self, action: ActType
@@ -395,14 +416,13 @@ class RewardSCMWrapper(
         """
         raise NotImplementedError
 
-
-class ActionSCMWrapper(
-    SCMWrapper[PolicyType, ObsType, WrapperActType, PolicyType, ObsType, ActType], 
+class ActionPCHWrapper(
+    PCHWrapper[PolicyType, ObsType, WrapperActType, PolicyType, ObsType, ActType], 
 ):
     """Superclass of wrappers that can modify the action before :meth:`env.do` and returned from :meth:`env.see`.
 
     If you would like to apply a function to the action before passing it to the base environment,
-    you can simply inherit from :class:`ActionSCMWrapper` and overwrite the method  :meth:`wrap_action` and :meth:`unwrap_action` to implement
+    you can simply inherit from :class:`ActionPCHWrapper` and overwrite the method  :meth:`wrap_action` and :meth:`unwrap_action` to implement
     that transformation. The transformation defined in that method must take values in the base environment’s
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
@@ -411,7 +431,7 @@ class ActionSCMWrapper(
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the action wrapper."""
-        SCMWrapper.__init__(self, env)
+        PCHWrapper.__init__(self, env)
 
     def step(
         self, action: WrapperActType
@@ -458,13 +478,13 @@ class ActionSCMWrapper(
         """
         raise NotImplementedError
     
-class PolicySCMWrapper(
-    SCMWrapper[WrapperPolicyType, ObsType, ActType, PolicyType, ObsType, ActType], 
+class PolicyPCHWrapper(
+    PCHWrapper[WrapperPolicyType, ObsType, ActType, PolicyType, ObsType, ActType], 
 ):
     """Superclass of wrappers that can modify the policy deployed in the environment.
 
     If you would like to deploy a policy to the base environment,
-    you can simply inherit from :class:`PolicySCMWrapper` and overwrite the method  :meth:`action` and :meth:`see` to implement
+    you can simply inherit from :class:`PolicyPCHWrapper` and overwrite the method  :meth:`action` and :meth:`see` to implement
     that transformation. The policy defined in that method must take values in the base environment’s
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
@@ -473,7 +493,7 @@ class PolicySCMWrapper(
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the action wrapper."""
-        SCMWrapper.__init__(self, env)
+        PCHWrapper.__init__(self, env)
 
     def action(self) -> ActType:
         """Modifies the :attr:`env` :meth:`action` using the new policy"""

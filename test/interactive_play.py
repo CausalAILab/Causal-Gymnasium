@@ -2,7 +2,7 @@ import gymnasium as gym
 import minigrid
 import numpy as np
 from gymnasium.utils.play import play
-from causal_gym.envs import WindyMiniGrid
+from causal_gym.envs import WindyMiniGridPCH
 
 # left = 0
 # right = 1
@@ -17,7 +17,7 @@ from causal_gym.envs import WindyMiniGrid
 # done = 6
 
 lavagrid = gym.make('MiniGrid-LavaGapS6-v0', max_episode_steps=30, agent_pov=False, render_mode='rgb_array', highlight=False, tile_size=32)
-windy_lavagrid = WindyMiniGrid(env=lavagrid,show_wind=True)
+windy_lavagrid = WindyMiniGridPCH(env=lavagrid,show_wind=True)
 play(env=windy_lavagrid, 
      keys_to_action={
         "w": 2,

@@ -260,6 +260,11 @@ class PCH(
         """
         return self.env.reset(seed=seed, options=options)
     
+    def step(self, action):
+        """For backward compatibility with some tools built for Gym API
+        """
+        return self.env.step(action)
+    
     def render(self) -> ObsType:
         """For the ease of interaction. 
         We add this to avoid calling PCH.env.reset()

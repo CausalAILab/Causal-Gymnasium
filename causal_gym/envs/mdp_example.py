@@ -1,10 +1,10 @@
 import math
 import numpy as np
 
-from causal_gym import SCM
+from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType
 
-class MDPExample(SCM):
+class MDPExampleSCM(SCM):
     """
     A confounded MDP from CRL book Chap. 7 Example 7.2.
     See also the inventory control example from Csaba 2010 - Algos for RL, Example 1.
@@ -56,27 +56,48 @@ class MDPExample(SCM):
     def state_transition(self, u1: int, u2: int, s: int, x: int) -> int:
         return (u1 != u2) != (s | x)
     
-    def see(self):
-        self.num_step += 1
-        u1 = self._u1()
-        u2 = self._u2()
-        u3 = self._u3()
-        self.x = self.action(self.s, u1)
-        self.y = ((self.s != self.x) != u1) != u3
-        # next state
-        self.s = self.state_transition(u1, u2, self.s, self.x)
-        # Return action, next state, reward, terminated, truncated, info
-        return self.x, self.s, self.y, False, self.num_step > self._max_step, {}
+    # def see(self):
+    #     self.x = self.action(self.s, u1)
+    #     self.num_step += 1
+    #     u1 = self._u1()
+    #     u2 = self._u2()
+    #     u3 = self._u3()
+    #     self.x = self.action(self.s, u1)
+    #     self.y = ((self.s != self.x) != u1) != u3
+    #     # next state
+    #     self.s = self.state_transition(u1, u2, self.s, self.x)
+    #     # Return action, next state, reward, terminated, truncated, info
+    #     return self.x, self.s, self.y, False, self.num_step > self._max_step, {}
+
+    def sample_u(self):
+        """
+        Sample exogeneous variables
+        """
+        return self._u1(), self._u2(), self._u3()
     
-    def do(self, x):
+    def step(self, x, u1, u2, u3):
         self.num_step += 1
-        u1 = self._u1()
-        u2 = self._u2()
-        u3 = self._u3()
-        self.x = x
-        self.y = ((self.s != self.x) != u1) != u3
+        # reward
+        self.y = ((self.s != x) != u1) != u3
         # next state
-        self.s = self.state_transition(u1, u2, self.s, self.x)
+        self.s = self.state_transition(u1, u2, self.s, x)
         # Return next state, reward, terminated, truncated, info
         return self.s, self.y, False, self.num_step > self._max_step, {}
     
+
+class MDPExamplePCH(PCH):
+    """PCH for the MDP Example defined above.
+    """
+    def __init__(self, init_dist=[.5,.5], max_step=30):
+        self.env = MDPExampleSCM(init_dist, max_step)
+        super().__init__()
+
+    def see(self):
+        u1, u2, u3 = self.env.sample_u()
+        x = self.env.action(self.env.s, u1)
+        s, y, terminated, truncated, info = self.env.step(x, u1, u2, u3)
+        return x, s, y, terminated, truncated, info 
+
+    def do(self, action):
+        u1, u2, u3 = self.env.sample_u()
+        return self.env.step(action, u1, u2, u3)

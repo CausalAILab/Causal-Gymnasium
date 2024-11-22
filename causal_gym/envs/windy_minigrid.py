@@ -253,7 +253,7 @@ class WindyMiniGridSCM(SCM):
         if self._show_wind and self._wind_direction != 4:
             # Wind direction is rendered as a blue arrow on the upper left corner of the map 
             # where there is a wall tile
-            tile_img = WindyMiniGrid.render_wind_tile(
+            tile_img = WindyMiniGridSCM.render_wind_tile(
                 obj=self._env.unwrapped.grid.get(0, 0),
                 # agent_dir=self._wind_direction_render,
                 agent_dir=self._wind_direction,
@@ -275,18 +275,29 @@ class WindyMiniGridSCM(SCM):
     
 
 class WindyMiniGridPCH(PCH):
-    
+    """PCH for WindyMiniGridSCM.
+    """
+
+    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: tuple = WIND_DIST):
+        self.env = WindyMiniGridSCM(env, policy, show_wind, wind_dist)
+        super().__init__()
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_np_random":
+            raise AttributeError(
+                "Can't access `_np_random` of a wrapper, use `self.unwrapped._np_random` or `self.np_random`."
+            )
+        elif name.startswith("_"):
+            raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+        return self._env.__getattribute__(name)
         
     def see(self):
-        # only add wind when moving forward, turning around or other move won't be affected by wind
-        action = self.action()
-        if action == self.actions.forward:
-            wind_actions = self._wind_to_actions()
-        else:
-            wind_actions = [action]
-        next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
-        # update wind direction
-        # self._wind_direction_render = self._wind_direction
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
-        info['wind'] = self._wind_direction
-        return action, next_state, reward, terminated, truncated, info
+        action = self.env.action()
+        s, y, terminated, truncated, info  = self.env.step(action)
+        return action, s, y, terminated, truncated, info 
+    
+    def do(self, action):
+        return self.env.step(action)
+    
+    def render(self):
+        return self.env.render()

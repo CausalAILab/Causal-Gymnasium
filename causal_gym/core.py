@@ -179,19 +179,19 @@ class PCH(
         - :meth:`see` - Updates an environment following the behavior policy returning the realized action, the next agent observation, the reward for taking that actions,
         - :meth:`do` - Updates an environment with actions returning the next agent observation, the reward for taking that actions.
     """
-    def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
+    def __init__(self, **kwargs):
         """Wraps an environment to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
         Args:
             env: The environment to wrap
         """
-        self.env = env
+        self.env: SCM
 
-        assert isinstance(env.unwrapped, SCM)
+        assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, Env)
+        Wrapper.__init__(self, self.env)
 
         self._policy: WrapperPolicyType | None = None
 
-        Wrapper.__init__(self, env)
 
     def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.
@@ -253,10 +253,22 @@ class PCH(
                 a certain timelimit was exceeded, or the physics simulation has entered an invalid state.
         """  
         raise NotImplementedError
+    
+    def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
+        """For the ease of interaction. 
+        We add this to avoid calling PCH.env.reset()
+        """
+        return self.env.reset(seed=seed, options=options)
+    
+    def render(self) -> ObsType:
+        """For the ease of interaction. 
+        We add this to avoid calling PCH.env.reset()
+        """
+        raise NotImplementedError
 
 
 class PCHWrapper(
-    PCH[PolicyType, ObsType, ActType]
+    PCH[WrapperPolicyType, WrapperObsType, WrapperActType, PolicyType, ObsType, ActType]
 ):
     """Wraps a :class:`causal_gym.PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
@@ -272,19 +284,19 @@ class PCHWrapper(
         If you inherit from :class:`PCHWrapper`, don't forget to call ``super().__init__(env)``
     """
 
-    def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
+    def __init__(self, **kwargs):
         """Wraps an environment to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
         Args:
             env: The environment to wrap
         """
-        self.env = env
+        self.env = SCM()
 
-        assert isinstance(env.unwrapped, SCM)
+        assert isinstance(self.env.unwrapped, SCM)
 
         self._policy: WrapperPolicyType | None = None
 
-        Wrapper.__init__(self, env)
+        Wrapper.__init__(self, self.env)
 
     def action(self) -> WrapperActType:
         return self.env.action()

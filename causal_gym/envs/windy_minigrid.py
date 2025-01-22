@@ -9,7 +9,7 @@ from enum import IntEnum
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
-from minigrid.core.world_object import WorldObj
+from minigrid.core.world_object import WorldObj, Ball
 from minigrid.core.actions import Actions
 from minigrid.utils.rendering import (
     downsample,
@@ -17,6 +17,7 @@ from minigrid.utils.rendering import (
     highlight_img,
     point_in_rect,
     point_in_triangle,
+    point_in_circle,
     rotate_fn,
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
@@ -228,15 +229,18 @@ class WindyMiniGridSCM(SCM):
 
         # Overlay the agent on top
         if agent_dir is not None:
-            tri_fn = point_in_triangle(
-                (0.12, 0.19),
-                (0.87, 0.50),
-                (0.12, 0.81),
-            )
+            if agent_dir != 4:
+                tri_fn = point_in_triangle(
+                    (0.12, 0.19),
+                    (0.87, 0.50),
+                    (0.12, 0.81),
+                )
 
-            # Rotate the agent based on its direction
-            tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
-            fill_coords(img, tri_fn, (115, 193, 255))
+                # Rotate the agent based on its direction
+                tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
+                fill_coords(img, tri_fn, (115, 193, 255))
+            else:
+                fill_coords(img, point_in_circle(0.5, 0.5, 0.31), (115, 193, 255))
 
         # Highlight the cell if needed
         if highlight:
@@ -250,12 +254,12 @@ class WindyMiniGridSCM(SCM):
     def render(self):
         img = self._env.unwrapped.get_frame(self._env.unwrapped.highlight, self._env.unwrapped.tile_size, self._env.unwrapped.agent_pov)
 
-        if self._show_wind and self._wind_direction != 4:
+        if self._show_wind:
             # Wind direction is rendered as a blue arrow on the upper left corner of the map 
+            # if no wind, a blue ball is rendered
             # where there is a wall tile
             tile_img = WindyMiniGridSCM.render_wind_tile(
                 obj=self._env.unwrapped.grid.get(0, 0),
-                # agent_dir=self._wind_direction_render,
                 agent_dir=self._wind_direction,
                 highlight=0,
                 tile_size=self._env.unwrapped.tile_size,

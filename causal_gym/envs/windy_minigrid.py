@@ -132,6 +132,14 @@ class WindyMiniGridSCM(SCM):
         return {"agent_pos": self._env.unwrapped.agent_pos, "agent_dir": self._env.unwrapped.agent_dir, "map": self._env.unwrapped.grid}
     
     @property
+    def agent_dir(self,):
+        return self._env.unwrapped.agent_dir
+    
+    @agent_dir.setter
+    def agent_dir(self, new_dir):
+        self._env.unwrapped.agent_dir = new_dir
+
+    @property
     def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
         """Return the causal diagram of the environment.
         Returns:
@@ -294,6 +302,14 @@ class WindyMiniGridPCH(PCH):
         elif name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
         return self._env.__getattribute__(name)
+    
+    @property
+    def agent_dir(self):
+        return self.env.agent_dir
+    
+    @agent_dir.setter
+    def agent_dir(self, new_dir):
+        self.env.agent_dir = new_dir
         
     def see(self, bpolicy=None):
         if bpolicy is not None:

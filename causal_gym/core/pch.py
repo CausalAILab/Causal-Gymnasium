@@ -113,7 +113,7 @@ class PCH(
         """For the ease of interaction. 
         We add this to avoid calling PCH.env.reset()
         """
-        raise NotImplementedError
+        return self.env.render()
     
 
 class PCHWrapper(
@@ -133,15 +133,15 @@ class PCHWrapper(
         If you inherit from :class:`PCHWrapper`, don't forget to call ``super().__init__(env)``
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, env, **kwargs):
         """Wraps an environment to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
         Args:
             env: The environment to wrap
         """
-        self.env = SCM()
+        self.env = env
 
-        assert isinstance(self.env.unwrapped, SCM)
+        # assert isinstance(self.env.unwrapped, SCM)
 
         self._policy: WrapperPolicyType | None = None
 
@@ -300,9 +300,9 @@ class ActionPCHWrapper(
         """Runs the :attr:`env` :meth:`env.step` using the modified ``action`` from :meth:`self.unwrap_action`."""
         return self.env.step(self.unwrap_action(action))
     
-    def step(self) -> tuple[WrapperActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
-        action, observation, reward, terminated, truncated, info = self.env.step()
-        return self.wrap_action(action), observation, reward, terminated, truncated, info
+    # def step(self) -> tuple[WrapperActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+    #     action, observation, reward, terminated, truncated, info = self.env.step()
+    #     return self.wrap_action(action), observation, reward, terminated, truncated, info
 
     def see(self) -> tuple[WrapperActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Modifies the :attr:`env` :meth:`see` action using :meth:`self.wrap_action`."""
@@ -318,25 +318,9 @@ class ActionPCHWrapper(
         return self.wrap_action(self.env.action())
 
     def wrap_action(self, action: ActType) -> WrapperActType:
-        """Returns a modified environment ``reward``.
-
-        Args:
-            reward: The :attr:`env` :meth:`step` reward
-
-        Returns:
-            The modified `reward`
-        """
         raise NotImplementedError
     
     def unwrap_action(self, action: WrapperActType) -> ActType:
-        """Returns a modified environment ``reward``.
-
-        Args:
-            reward: The :attr:`env` :meth:`step` reward
-
-        Returns:
-            The modified `reward`
-        """
         raise NotImplementedError
     
 class PolicyPCHWrapper(

@@ -161,7 +161,7 @@ class WindyMiniGridSCM(SCM):
         truncated = False
         for act in seq:
             next_state_tmp, reward_tmp, terminated_tmp, truncated_tmp, info_tmp = self._env.step(act)
-            reward += reward
+            reward += reward_tmp
             terminated = terminated or terminated_tmp
             truncated = truncated or truncated_tmp
             if terminated or truncated:
@@ -295,8 +295,11 @@ class WindyMiniGridPCH(PCH):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
         return self._env.__getattribute__(name)
         
-    def see(self):
-        action = self.env.action()
+    def see(self, bpolicy=None):
+        if bpolicy is not None:
+            action = bpolicy(self.env._internal_state, self.env._wind_direction)
+        else:
+            action = self.env.action()
         s, y, terminated, truncated, info  = self.env.step(action)
         return action, s, y, terminated, truncated, info 
     

@@ -9,7 +9,7 @@ from enum import IntEnum
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
-from minigrid.core.world_object import WorldObj, Ball
+from minigrid.core.world_object import WorldObj, Ball, Wall, Lava, Goal
 from minigrid.core.actions import Actions
 from minigrid.utils.rendering import (
     downsample,
@@ -96,11 +96,14 @@ class WindyMiniGridSCM(SCM):
         # Done completing task
         done = 6
 
-    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: tuple = WIND_DIST):
+    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: Union[tuple, Callable] = WIND_DIST):
         assert issubclass(env.unwrapped.__class__, MiniGridEnv), f"Input env must be of type 'MiniGridEnv'!"
         self.spec = env.spec
         self._env = env
-        self._wind_dist = wind_dist
+        if isinstance(wind_dist, Callable):
+            self._wind_dist = wind_dist
+        else:
+            self._wind_dist = lambda x: wind_dist
         self.actions = Actions
         self.render_mode = self._env.unwrapped.render_mode
         # whether to display wind direction at rendering time
@@ -111,6 +114,8 @@ class WindyMiniGridSCM(SCM):
             # stand still, yield control to the wind
             self._policy = dummy_behavioral_policy
 
+        self.steps_cnt = 0
+
     def __getattr__(self, name: str) -> Any:
         if name == "_np_random":
             raise AttributeError(
@@ -118,15 +123,21 @@ class WindyMiniGridSCM(SCM):
             )
         elif name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
-        return self._env.__getattribute__(name)
+        if hasattr(self._env, name):
+            return getattr(self._env, name)
+        else:
+            return getattr(self._env.unwrapped, name)
+
     
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
         obs, info = self._env.reset(seed = seed, options=options)
         self._internal_state = self._get_internal_state()
+        obs['loc'] = self._env.unwrapped.agent_pos
         self.rng = np.random.default_rng(seed)
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
+        self._wind_direction = self.rng.choice(len(self._wind_dist(obs['loc'])), p = self._wind_dist(obs['loc']))
         info['wind'] = self._wind_direction
-        return obs, info
+        self.steps_cnt = 0
+        return tuple(obs['loc']), info
 
     def _get_internal_state(self) -> dict:
         return {"agent_pos": self._env.unwrapped.agent_pos, "agent_dir": self._env.unwrapped.agent_dir, "map": self._env.unwrapped.grid}
@@ -138,6 +149,22 @@ class WindyMiniGridSCM(SCM):
     @agent_dir.setter
     def agent_dir(self, new_dir):
         self._env.unwrapped.agent_dir = new_dir
+
+    @property
+    def agent_pos(self,):
+        return self._env.unwrapped.agent_pos
+    
+    @agent_pos.setter
+    def agent_pos(self, new_pos):
+        self._env.unwrapped.agent_pos = new_pos
+
+    @property
+    def wind_dir(self,):
+        return self._wind_direction
+    
+    @wind_dir.setter
+    def wind_dir(self, new_dir):
+        self._wind_direction = new_dir
 
     @property
     def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
@@ -162,6 +189,10 @@ class WindyMiniGridSCM(SCM):
     
     def observation(self):
         return self._env.render()
+    
+    @property
+    def wind_dist(self):
+        return self._wind_dist
 
     def _action_sequence(self, seq: tuple[int]):
         reward = 0
@@ -169,11 +200,24 @@ class WindyMiniGridSCM(SCM):
         truncated = False
         for act in seq:
             next_state_tmp, reward_tmp, terminated_tmp, truncated_tmp, info_tmp = self._env.step(act)
-            reward += reward_tmp
             terminated = terminated or terminated_tmp
             truncated = truncated or truncated_tmp
+            if not terminated:
+                reward += reward_tmp
             if terminated or truncated:
                 break
+
+        # spread step penalty evenly to every time step, make reward markov
+        # reward += -0.9*(1/self._env.unwrapped.max_steps)
+        reward = -.1
+
+        # terminated
+        if terminated:
+            if isinstance(self.grid.get(*self.agent_pos), Goal):
+                reward += 0
+            elif isinstance(self.grid.get(*self.agent_pos), Lava):
+                reward += -1
+            
         return next_state_tmp, reward, terminated, truncated, info_tmp
     
     def _wind_to_actions(self) -> tuple[int]:
@@ -195,6 +239,7 @@ class WindyMiniGridSCM(SCM):
             return [self.actions.forward, first_turn, self.actions.forward, second_turn] 
     
     def step(self, action):
+        self.steps_cnt += 1
         # only add wind when moving forward, turning around or other move won't be affected by wind
         if action == self.actions.forward:
             wind_actions = self._wind_to_actions()
@@ -202,10 +247,10 @@ class WindyMiniGridSCM(SCM):
             wind_actions = [action]
         next_state, reward, terminated, truncated, info = self._action_sequence(wind_actions)
         # update wind direction
-        # self._wind_direction_render = self._wind_direction
-        self._wind_direction = self.rng.choice(len(self._wind_dist), p = self._wind_dist)
+        self._wind_direction = self.rng.choice(len(self._wind_dist(self.agent_pos)), p = self._wind_dist(self.agent_pos))
+        next_state['loc'] = self.agent_pos
         info['wind'] = self._wind_direction
-        return next_state, reward, terminated, truncated, info
+        return tuple(next_state['loc']), reward, terminated, truncated, info
     
     @classmethod
     def render_wind_tile(
@@ -290,9 +335,11 @@ class WindyMiniGridPCH(PCH):
     """PCH for WindyMiniGridSCM.
     """
 
-    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: tuple = WIND_DIST):
+    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: Union[tuple, Callable] = WIND_DIST):
         self.env = WindyMiniGridSCM(env, policy, show_wind, wind_dist)
-        super().__init__()
+        self.state_space = [env.unwrapped.width, env.unwrapped.height]
+        PCH.__init__(self)
+        # print(getattr(self, 'state_space'))
 
     def __getattr__(self, name: str) -> Any:
         if name == "_np_random":
@@ -301,7 +348,10 @@ class WindyMiniGridPCH(PCH):
             )
         elif name.startswith("_"):
             raise AttributeError(f"accessing private attribute '{name}' is prohibited")
-        return self._env.__getattribute__(name)
+        if hasattr(self.env, name):
+            return getattr(self.env, name)
+        else:
+            return self.env.__getattr__(name)
     
     @property
     def agent_dir(self):
@@ -310,10 +360,30 @@ class WindyMiniGridPCH(PCH):
     @agent_dir.setter
     def agent_dir(self, new_dir):
         self.env.agent_dir = new_dir
+
+    @property
+    def agent_pos(self,):
+        return self.env.agent_pos
+    
+    @agent_pos.setter
+    def agent_pos(self, new_pos):
+        self.env.agent_pos = new_pos
+
+    @property
+    def wind_dir(self,):
+        return self.env.wind_dir
+    
+    @wind_dir.setter
+    def wind_dir(self, new_dir):
+        self.env.wind_dir = new_dir
+
+    @property
+    def wind_dist(self):
+        return self.env.wind_dist
         
     def see(self, bpolicy=None):
         if bpolicy is not None:
-            action = bpolicy(self.env._internal_state, self.env._wind_direction)
+            action = bpolicy(self.env.agent_pos, self.env.wind_dir)
         else:
             action = self.env.action()
         s, y, terminated, truncated, info  = self.env.step(action)

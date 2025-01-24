@@ -205,11 +205,12 @@ class WindyMiniGridSCM(SCM):
             if not terminated:
                 reward += reward_tmp
             if terminated or truncated:
+                # recalculate termination reward
                 break
 
         # spread step penalty evenly to every time step, make reward markov
         # reward += -0.9*(1/self._env.unwrapped.max_steps)
-        reward = -.1
+        reward += -.1
 
         # terminated
         if terminated:

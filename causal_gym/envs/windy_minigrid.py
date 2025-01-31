@@ -11,6 +11,7 @@ from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.world_object import WorldObj, Ball, Wall, Lava, Goal
 from minigrid.core.actions import Actions
+from minigrid.core.constants import COLORS
 from minigrid.utils.rendering import (
     downsample,
     fill_coords,
@@ -211,13 +212,16 @@ class WindyMiniGridSCM(SCM):
         # spread step penalty evenly to every time step, make reward markov
         # reward += -0.9*(1/self._env.unwrapped.max_steps)
         reward += -.1
+        # reward += 0
 
         # terminated
         if terminated:
             if isinstance(self.grid.get(*self.agent_pos), Goal):
+                # reward += 1
                 reward += 0
             elif isinstance(self.grid.get(*self.agent_pos), Lava):
                 reward += -1
+                # reward += 0
             
         return next_state_tmp, reward, terminated, truncated, info_tmp
     
@@ -261,10 +265,14 @@ class WindyMiniGridSCM(SCM):
         highlight: bool = False,
         tile_size: int = TILE_PIXELS,
         subdivs: int = 3,
+        color: Union[tuple, str] = (115, 193, 255),
     ) -> np.ndarray:
         """
         Render the wind dir tile
         """
+        if isinstance(color, str):
+            assert color in list(COLORS.keys()), f'color str (input: {color}) must be one of these: {COLORS.keys()}.'
+            color = COLORS[color]
 
         # Hash map lookup key for the cache
         key: tuple[Any, ...] = (agent_dir, highlight, tile_size)
@@ -292,9 +300,9 @@ class WindyMiniGridSCM(SCM):
 
                 # Rotate the agent based on its direction
                 tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
-                fill_coords(img, tri_fn, (115, 193, 255))
+                fill_coords(img, tri_fn, color)
             else:
-                fill_coords(img, point_in_circle(0.5, 0.5, 0.31), (115, 193, 255))
+                fill_coords(img, point_in_circle(0.5, 0.5, 0.31), color)
 
         # Highlight the cell if needed
         if highlight:

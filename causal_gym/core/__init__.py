@@ -1,4 +1,3 @@
-from gymnasium.envs.registration import register
 from .scm import (
     SCM,
 )
@@ -25,15 +24,3 @@ from .types import (
     WrapperPolicyType
 )
 
-
-register(
-    id="causal_gym/WindyGridWorld-v0",
-    entry_point="causal_gym.envs:WindyGridWorldEnv",
-    max_episode_steps=10,
-)
-
-# register(
-#     id="causal_gym/MDPExample-v0",
-#     entry_point="causal_gym.envs:MDPExamplePCH",
-#     max_episode_steps=50,
-# )

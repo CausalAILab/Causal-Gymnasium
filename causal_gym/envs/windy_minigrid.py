@@ -1,13 +1,5 @@
-import math
 import numpy as np
 from typing import Callable, Dict, List, Optional, Tuple, Union, Any
-from gymnasium import Env, logger
-from gymnasium.core import ActType, ObsType
-from gymnasium.error import DependencyNotInstalled
-from gymnasium.logger import deprecation
-from enum import IntEnum
-from causal_gym import SCM, PCH
-from causal_gym.core import PolicyType, ActType, ObsType
 from minigrid.minigrid_env import MiniGridEnv
 from minigrid.core.world_object import WorldObj, Ball, Wall, Lava, Goal
 from minigrid.core.actions import Actions
@@ -22,6 +14,9 @@ from minigrid.utils.rendering import (
     rotate_fn,
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
+
+from ..core import PolicyType, ActType, ObsType, SCM, PCH
+from .constants import WIND_ICONS, COIN_IMG, FLAG_IMG, ROBO_IMG
 
 
 WIND_DIST = (.1, .1, .1, .1, .6)
@@ -80,22 +75,6 @@ class WindyMiniGridSCM(SCM):
 
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
-
-    # Enumeration of possible actions
-    class Actions(IntEnum):
-        # Turn left, turn right, move forward
-        # turn around should be a combination of turn left/right twice then move forward
-        left = 0
-        right = 1
-        forward = 2
-        # Pick up an object
-        pickup = 3
-        # Drop an object
-        drop = 4
-        # Toggle/activate an object
-        toggle = 5
-        # Done completing task
-        done = 6
 
     def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: Union[tuple, Callable] = WIND_DIST):
         assert issubclass(env.unwrapped.__class__, MiniGridEnv), f"Input env must be of type 'MiniGridEnv'!"
@@ -189,7 +168,7 @@ class WindyMiniGridSCM(SCM):
         return self._policy(self._internal_state, self._wind_direction)
     
     def observation(self):
-        return self._env.render()
+        return self.render()
     
     @property
     def wind_dist(self):
@@ -299,7 +278,7 @@ class WindyMiniGridSCM(SCM):
                 )
 
                 # Rotate the agent based on its direction
-                tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * math.pi * agent_dir)
+                tri_fn = rotate_fn(tri_fn, cx=0.5, cy=0.5, theta=0.5 * np.pi * agent_dir)
                 fill_coords(img, tri_fn, color)
             else:
                 fill_coords(img, point_in_circle(0.5, 0.5, 0.31), color)
@@ -338,7 +317,7 @@ class WindyMiniGridSCM(SCM):
             raise NotImplementedError
         elif self._env.unwrapped.render_mode == "rgb_array":
             return img
-    
+        
 
 class WindyMiniGridPCH(PCH):
     """PCH for WindyMiniGridSCM.

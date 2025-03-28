@@ -1,6 +1,8 @@
 from .windy_gridworld import WindyGridWorldEnv
 from .windy_minigrid import WindyMiniGridSCM, WindyMiniGridPCH
 from .mdp_example import MDPExampleSCM, MDPExamplePCH
+from .dtr_example import DTRExampleSCM, DTRExamplePCH
+from .mab_example import MABExampleSCM, MABExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 

@@ -6,8 +6,6 @@ from causal_gym.core import PolicyType, ActType, ObsType
 
 class MABExampleSCM(SCM):
     """
-    A Multi-Armed Bandit (MAB) environment from CRL book Chap. 8 Example 8.8.
-    
     This implements a classic MAB scenario with optional confounding to demonstrate
     the difference between observational data and interventional data.
     
@@ -33,7 +31,7 @@ class MABExampleSCM(SCM):
         
         Args:
             confounding_strength: Strength of confounding between U -> X and U -> Y
-                                 (0 = no confounding, as in Example 8.8)
+
             arms_probs: Optional override for arm reward probabilities
                        [p(Y=1|X=0), p(Y=1|X=1)] when confounding is disabled
         """

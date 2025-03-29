@@ -39,23 +39,21 @@ class MABExampleSCM(SCM):
         """
         self.confounding_strength = confounding_strength
         
-        # Default arm reward probabilities when there's no confounding
         # By default arm 0 has higher reward (0.4 vs 0.3)
         if arms_probs is None:
             self.arms_probs = [0.4, 0.3]
         else:
             self.arms_probs = arms_probs
             
-        # Initialize state
         self.x = None
         self.y = None
         self.u = None  # Unmeasured confounder
         
-        # Default behavioral policy - uniformly random
+        # default behavioral policy - uniformly random
         self._policy = lambda u: int((0.8 + self.confounding_strength * u) > self.rng.random())
         
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
-        """Reset the environment for a new episode"""
+        """Reset the environment for a new stage"""
         self.rng = np.random.default_rng(seed)
         
         # Sample confounder U ~ Uniform(0, 1)
@@ -157,7 +155,7 @@ class MABExamplePCH(PCH):
         Args:
             action: The arm to pull (0 or 1)
             
-        Returns a tuple of:
+        Returns tuple:
             observation: None
             reward: The reward (0 or 1)
             terminated: Always True

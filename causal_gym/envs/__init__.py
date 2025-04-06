@@ -4,6 +4,8 @@ from .mdp_example import MDPExampleSCM, MDPExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 
+from .mnist import MNISTSCM, MNISTPCH
+
 from gymnasium.envs.registration import register
 register(
     id="causal_gym/WindyGridWorld-v0",

@@ -15,12 +15,12 @@ import os
 class MNISTSCM(SCM):
     """Causal environment for the MNIST digits experiment."""
 
-    def __init__(self, seed: int = None):
+    def __init__(self, seed: int = None, policy: PolicyType = None):
         super().__init__()
         self._dataset_loaded = False
         self._load_binary_mnist()
         self._np_random = np.random.default_rng(seed)
-        self.u = None
+        self.u = lambda: self._np_random.integers(0, 2)  # U ~ {0, 1}
         self.x = None
         self.w = None
         self.s = None
@@ -30,6 +30,12 @@ class MNISTSCM(SCM):
         self.action_space = spaces.Discrete(2)
         # Observation space: S is an image, shape (1, 28, 28), values in [0, 1]
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(1, 28, 28), dtype=np.float32)
+
+        if policy is None:
+            # Placeholder policy: action is anti-correlated with U
+            self._policy = lambda u: 1 - u
+        else:
+            self._policy = policy
 
     def _load_binary_mnist(self):
         """Load and filter MNIST to only include digits 0 and 1."""
@@ -51,27 +57,33 @@ class MNISTSCM(SCM):
     def reset(self, *, seed: int = None, options: dict = None) -> Tuple[ObsType, dict]:
         if seed is not None:
             self._np_random = np.random.default_rng(seed)
-        self.u = self._np_random.integers(0, 2)  # U ~ {0, 1}
         self.x = None
         self.w = None
         self.s = None
         self.y = None
-        return None, {"u": self.u}
+        return None, {}
 
-    def action(self) -> ActType:
-        return self.x
+    def action(self, u: int) -> ActType:
+        return self._policy(u)
 
     def observation(self) -> ObsType:
         return self.s.astype(np.float32) if self.s is not None else None
 
-    def step(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
+    def sample_u(self):
+        """Sample exogenous variables."""
+        return self.u()
+
+    def step(self, action: ActType, u: int = None) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         self.x = action
         if self.x == 0:
             self.w = self._np_random.choice(self.digit_0)
         else:
             self.w = self._np_random.choice(self.digit_1)
 
-        if self.u == 0:
+        if u is None:
+            u = self.sample_u()
+
+        if u == 0:
             self.s = self.w
         else:
             noise = self._np_random.normal(loc=0.0, scale=0.1, size=self.w.shape)
@@ -80,7 +92,7 @@ class MNISTSCM(SCM):
         obs = self.s.astype(np.float32)
         info = {
             "x": self.x,
-            "u": self.u,
+            "u": u,
             "w": self.w,
             "s": self.s,
         }
@@ -135,13 +147,14 @@ class MNISTPCH(PCH):
     """PCH wrapper for MNISTSCM."""
 
     def __init__(self, seed: int = None):
+        self.env = MNISTSCM(seed=seed)  # Ensure env is set before base class init
         super().__init__()
-        self.env = MNISTSCM(seed=seed)
 
     def see(self) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:
-        self.env.u = self.env._np_random.integers(0, 2)
-        self.env.x = 1 - self.env.u  # behavior policy: x = 1 - u
-        return self.env.step(self.env.x)
+        u = self.env.sample_u()
+        x = self.env.action(u)
+        s, y, terminated, truncated, info = self.env.step(x, u)
+        return x, s, y, terminated, truncated, info
 
     def do(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         return self.env.step(action)

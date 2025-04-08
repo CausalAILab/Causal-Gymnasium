@@ -12,3 +12,6 @@ pip install .
 See ``test/test_windyminigrid.ipynb`` for use cases and examples!
 - **Confounded Inventory Control**: We adopt the inventory contorl problem introduced in [Algorithms in Reinforcement Learning](https://sites.ualberta.ca/~szepesva/rlbook.html) Example 1 and The Causal Inference Book Chap. 7 Example 7.2.  
 See ``test/test_mdp_example.ipynb`` for use cases and examples!
+
+## Notes
+- In installation instructions, should use "pip install -e ." to avoid the environment image assets not showing up in the causalgym package in Conda

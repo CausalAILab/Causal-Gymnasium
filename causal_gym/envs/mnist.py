@@ -7,44 +7,37 @@ from gymnasium import spaces
 
 from torchvision.datasets import MNIST
 from torchvision import transforms
-from torch.utils.data import DataLoader, Subset
-import torch
+from torch.utils.data import Subset
 import os
 
 
 class MNISTSCM(SCM):
-    """Causal environment for the MNIST digits experiment."""
+    '''Causal environment for the MNIST digits experiment.'''
 
-    def __init__(self, seed: int = None, policy: PolicyType = None):
+    def __init__(self, seed: int = None):
         super().__init__()
-        self._dataset_loaded = False
+        self.rng = np.random.default_rng(seed)
+
+        # load dataset
         self._load_binary_mnist()
-        self._np_random = np.random.default_rng(seed)
-        self.u = lambda: self._np_random.integers(0, 2)  # U ~ {0, 1}
+
+        self._u = None
         self.x = None
         self.w = None
         self.s = None
-        self.y = None
 
-        # Define action space: X ∈ {0, 1}
+        # SCM says to set these no matter what but I don't see a use for them yet
         self.action_space = spaces.Discrete(2)
-        # Observation space: S is an image, shape (1, 28, 28), values in [0, 1]
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(1, 28, 28), dtype=np.float32)
-
-        if policy is None:
-            # Placeholder policy: action is anti-correlated with U
-            self._policy = lambda u: 1 - u
-        else:
-            self._policy = policy
+        self.observation_space = spaces.Discrete(2)
 
     def _load_binary_mnist(self):
-        """Load and filter MNIST to only include digits 0 and 1."""
+        '''Load and filter MNIST to only include digits 0 and 1.'''
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Lambda(lambda x: x.numpy())
         ])
 
-        dataset = MNIST(root=os.path.expanduser("~/.mnist"), train=True, download=True, transform=transform)
+        dataset = MNIST(root=os.path.expanduser('~/.mnist'), train=True, download=True, transform=transform)
 
         binary_indices = [i for i, (img, label) in enumerate(dataset) if label in [0, 1]]
         self.binary_dataset = Subset(dataset, binary_indices)
@@ -52,78 +45,84 @@ class MNISTSCM(SCM):
         self.digit_0 = [img for img, label in self.binary_dataset if label == 0]
         self.digit_1 = [img for img, label in self.binary_dataset if label == 1]
 
-        self._dataset_loaded = True
-
     def reset(self, *, seed: int = None, options: dict = None) -> Tuple[ObsType, dict]:
-        if seed is not None:
-            self._np_random = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(seed)
+
+        self._u = None
         self.x = None
         self.w = None
         self.s = None
-        self.y = None
-        return None, {}
+        return self.s, {}
 
-    def action(self, u: int) -> ActType:
-        return self._policy(u)
+    def action(self) -> ActType:
+        return None # behavioral policy is to use self._u
 
-    def observation(self) -> ObsType:
-        return self.s.astype(np.float32) if self.s is not None else None
+    def observation(self):
+        return {"x": self.env.x, "s": self.env.s}
 
-    def sample_u(self):
-        """Sample exogenous variables."""
-        return self.u()
+    def sample_u(self) -> int:
+        '''Sample u from P(u).'''
+        return self.rng.choice(2, p=[0.1, 0.9])
 
-    def step(self, action: ActType, u: int = None) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
-        self.x = action
+    def step(self, action = None) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
+        # sample u from P(u)
+        self._u = self.sample_u()
+
+        # if action provided (intervention was performed), set x from action
+        if action is not None:
+            self.x = action
+        else: # no intervention was done, sample x from P(x|u)
+            if self._u == 0:
+                self.x = self.rng.choice(2, p=[0.9, 0.1])
+            else:
+                self.x = self.rng.choice(2, p=[0.1, 0.9])
+
+        # sample w from P(w|x)
+        digit = None
         if self.x == 0:
-            self.w = self._np_random.choice(self.digit_0)
+            digit = self.rng.choice(2, p=[0.9, 0.1])
         else:
-            self.w = self._np_random.choice(self.digit_1)
+            digit = self.rng.choice(2, p=[0.1, 0.9])
 
-        if u is None:
-            u = self.sample_u()
+        self.w = self.rng.choice(self.digit_0 if digit == 0 else self.digit_1)
 
-        if u == 0:
-            self.s = self.w
+        # sample s from P(s|u, w)
+        if self._u == 0 and digit == 0:
+            prob_s_1 = 0.1
+        elif self._u == 0 and digit == 1:
+            prob_s_1 = 0.9
+        elif self._u == 1 and digit == 0:
+            prob_s_1 = 0.9
         else:
-            noise = self._np_random.normal(loc=0.0, scale=0.1, size=self.w.shape)
-            self.s = np.clip(self.w + noise, 0.0, 1.0)
+            prob_s_1 = 0.1
 
-        obs = self.s.astype(np.float32)
-        info = {
-            "x": self.x,
-            "u": u,
-            "w": self.w,
-            "s": self.s,
-        }
-        return obs, 0.0, True, False, info
+        self.s = self.rng.choice(2, p=[1 - prob_s_1, prob_s_1])
+
+        # observation, reward, terminated, truncated, info
+        obs = {"x": self.x, "s": self.s}
+        return obs, None, True, True, {"u": self._u}
 
     def render(self) -> ObsType:
         import matplotlib.pyplot as plt
 
-        if self.w is None or self.s is None:
-            print("Nothing to render. Run `do()` or `see()` first.")
+        if self.w is None:
+            print('Nothing to render. Run `do()` or `see()` first.')
             return
 
-        fig, axs = plt.subplots(1, 2)
-        axs[0].imshow(self.w.squeeze(), cmap='gray')
-        axs[0].set_title(f'W (digit {self.x})')
-        axs[0].axis('off')
-
-        axs[1].imshow(self.s.squeeze(), cmap='gray')
-        axs[1].set_title('S (surrogate)')
-        axs[1].axis('off')
-
-        plt.tight_layout()
+        plt.imshow(self.w.squeeze(), cmap='gray')
+        plt.title(f'W (digit {self.x})')
+        plt.axis('off')
         plt.show()
+
+        print(f'X: {self.x}, S: {self.s}')
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
         nodes = {
-            0: "X",
-            1: "W",
-            2: "S",
-            3: "Y"
+            0: 'X',
+            1: 'W',
+            2: 'S',
+            3: 'Y'
         }
 
         base_graph = [
@@ -144,17 +143,24 @@ class MNISTSCM(SCM):
 
 
 class MNISTPCH(PCH):
-    """PCH wrapper for MNISTSCM."""
+    '''PCH wrapper for MNISTSCM.'''
 
     def __init__(self, seed: int = None):
         self.env = MNISTSCM(seed=seed)  # Ensure env is set before base class init
         super().__init__()
 
-    def see(self) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:
-        u = self.env.sample_u()
-        x = self.env.action(u)
-        s, y, terminated, truncated, info = self.env.step(x, u)
-        return x, s, y, terminated, truncated, info
+    def see(self, behavioral_policy = None) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:
+        if behavioral_policy is not None:
+            # step thru expert's policy
+            action = behavioral_policy(self.env._u)
+        else:
+            # use internal behavioral policy
+            action = self.env.action()
+
+        print('see: action/u =', action, self.env._u)
+
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return action, obs, reward, terminated, truncated, info
 
     def do(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         return self.env.step(action)

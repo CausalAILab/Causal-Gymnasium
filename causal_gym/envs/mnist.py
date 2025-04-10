@@ -25,6 +25,7 @@ class MNISTSCM(SCM):
         self.x = None
         self.w = None
         self.s = None
+        self.y = None
 
         # SCM says to set these no matter what but I don't see a use for them yet
         self.action_space = spaces.Discrete(2)
@@ -52,21 +53,25 @@ class MNISTSCM(SCM):
         self.x = None
         self.w = None
         self.s = None
+        self.y = None
+
         return self.s, {}
 
     def action(self) -> ActType:
         return None # behavioral policy is to use self._u
 
     def observation(self):
-        return {"x": self.env.x, "s": self.env.s}
+        return {'x': self.env.x, 's': self.env.s}
 
     def sample_u(self) -> int:
         '''Sample u from P(u).'''
-        return self.rng.choice(2, p=[0.1, 0.9])
+        self._u = self.rng.choice(2, p=[0.1, 0.9])
+        return self._u
 
-    def step(self, action = None) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
+    def step(self, action = None, show_reward = False) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         # sample u from P(u)
-        self._u = self.sample_u()
+        if self._u is None:
+            self.sample_u()
 
         # if action provided (intervention was performed), set x from action
         if action is not None:
@@ -98,9 +103,15 @@ class MNISTSCM(SCM):
 
         self.s = self.rng.choice(2, p=[1 - prob_s_1, prob_s_1])
 
+        # set Y using Y <- !s
+        # this should be latent
+        self.y = 1 - self.s
+
+        reward = self.y if show_reward else None
+
         # observation, reward, terminated, truncated, info
-        obs = {"x": self.x, "s": self.s}
-        return obs, None, True, True, {"u": self._u}
+        obs = {'x': self.x, 's': self.s}
+        return obs, reward, True, True, {'u': self._u}
 
     def render(self) -> ObsType:
         import matplotlib.pyplot as plt
@@ -152,12 +163,10 @@ class MNISTPCH(PCH):
     def see(self, behavioral_policy = None) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:
         if behavioral_policy is not None:
             # step thru expert's policy
-            action = behavioral_policy(self.env._u)
+            action = behavioral_policy(self.env.sample_u())
         else:
             # use internal behavioral policy
             action = self.env.action()
-
-        print('see: action/u =', action, self.env._u)
 
         obs, reward, terminated, truncated, info = self.env.step(action)
         return action, obs, reward, terminated, truncated, info

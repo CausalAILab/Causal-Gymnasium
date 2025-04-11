@@ -29,7 +29,11 @@ class MNISTSCM(SCM):
 
         # SCM says to set these no matter what but I don't see a use for them yet
         self.action_space = spaces.Discrete(2)
-        self.observation_space = spaces.Discrete(2)
+        self.observation_space = spaces.Dict({
+            'x': spaces.Discrete(2),
+            'w': spaces.Box(low=0, high=1, shape=(1, 28, 28), dtype=np.float32),
+            's': spaces.Discrete(2)
+        })
 
     def _load_binary_mnist(self):
         '''Load and filter MNIST to only include digits 0 and 1.'''
@@ -57,30 +61,24 @@ class MNISTSCM(SCM):
 
         return self.s, {}
 
-    def action(self) -> ActType:
-        return None # behavioral policy is to use self._u
+    def action(self, u) -> ActType:
+        return self.rng.choice(2, p=[0.9, 0.1]) if u == 0 else self.rng.choice(2, p=[0.1, 0.9])
 
     def observation(self):
-        return {'x': self.env.x, 's': self.env.s}
+        return {'x': self.x, 'w': self.w, 's': self.s}
 
     def sample_u(self) -> int:
         '''Sample u from P(u).'''
         self._u = self.rng.choice(2, p=[0.1, 0.9])
         return self._u
 
-    def step(self, action = None, show_reward = False) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
+    def step(self, action, show_reward = False) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         # sample u from P(u)
         if self._u is None:
             self.sample_u()
 
-        # if action provided (intervention was performed), set x from action
-        if action is not None:
-            self.x = action
-        else: # no intervention was done, sample x from P(x|u)
-            if self._u == 0:
-                self.x = self.rng.choice(2, p=[0.9, 0.1])
-            else:
-                self.x = self.rng.choice(2, p=[0.1, 0.9])
+        # sample x from the action
+        self.x = action
 
         # sample w from P(w|x)
         digit = None
@@ -111,21 +109,33 @@ class MNISTSCM(SCM):
 
         # observation, reward, terminated, truncated, info
         obs = {'x': self.x, 's': self.s}
-        return obs, reward, True, True, {'u': self._u}
+        return obs, reward, True, True, {'u': self._u, 'y': self.y}
 
-    def render(self) -> ObsType:
+    def render(self, render_mode = 'human') -> ObsType:
+        '''
+        Render the environment. In this case, we will render the image of the digit and print other variables.
+        render_mode: 'human' (show the image) or 'rgb_array' (return the image as an array).
+        '''
         import matplotlib.pyplot as plt
+        import numpy as np
 
         if self.w is None:
-            print('Nothing to render. Run `do()` or `see()` first.')
-            return
+            raise ValueError('Nothing to render. Run `do()` or `see()` first.')
+        
+        fig, ax = plt.subplots()
+        ax.imshow(self.w.squeeze(), cmap='gray')
+        ax.set_title(f'W (digit {self.x})')
+        ax.axis('off')
 
-        plt.imshow(self.w.squeeze(), cmap='gray')
-        plt.title(f'W (digit {self.x})')
-        plt.axis('off')
-        plt.show()
-
-        print(f'X: {self.x}, S: {self.s}')
+        if render_mode == 'human':
+            return fig, self.x, self.s
+        elif render_mode == 'rgb_array':
+            fig.canvas.draw()
+            img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            plt.close(fig)
+        else:
+            raise ValueError(f'Unknown render mode: {render_mode}. Please choose "human" or "rgb_array".')
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
@@ -165,8 +175,8 @@ class MNISTPCH(PCH):
             # step thru expert's policy
             action = behavioral_policy(self.env.sample_u())
         else:
-            # use internal behavioral policy
-            action = self.env.action()
+            u = self.env.sample_u()
+            action = self.env.action(u)
 
         obs, reward, terminated, truncated, info = self.env.step(action)
         return action, obs, reward, terminated, truncated, info
@@ -177,5 +187,5 @@ class MNISTPCH(PCH):
     def reset(self, *, seed: int = None, options: dict = None) -> Tuple[ObsType, dict]:
         return self.env.reset(seed=seed, options=options)
 
-    def render(self) -> ObsType:
+    def render(self, render_mode = 'human') -> ObsType:
         return self.env.render()

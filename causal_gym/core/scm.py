@@ -12,7 +12,7 @@ from gymnasium.utils import RecordConstructorArgs, seeding
 if TYPE_CHECKING:
     from gymnasium.envs.registration import EnvSpec, WrapperSpec
 
-from .types import *
+from .obj_types import *
 
 class SCM(
     Env[ObsType, ActType],
@@ -124,7 +124,7 @@ class SCM(
         self._np_random = value
     
     @property
-    def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
+    def get_graph(self,) :#-> tuple[dict[int, str], list[list[int]], list[list[int]]]:
         """Return the causal diagram of the environment.
         Returns:
             Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.

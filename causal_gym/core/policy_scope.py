@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 
 from collections import namedtuple
-from .types import *
+from .obj_types import *
 
 
 # Define the policy scope as a named tuple
@@ -14,3 +14,4 @@ class PolicyScope(namedtuple('PolicyScope', ['act', 'obs'])):
     def __new__(cls, act:list[ActType]=[], obs:list[ObsType]=[]):
         return super(PolicyScope, cls).__new__(cls, act, obs)
     
+# class MixedPolicy():

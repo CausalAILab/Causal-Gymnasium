@@ -15,7 +15,7 @@ from .policy_scope import (
 from .task import (
     Task
 )
-from .types import (
+from .obj_types import (
     ObsType,
     ActType,
     PolicyType,

@@ -6,28 +6,6 @@ from causal_gym.core.causal_graph import CausalGraph
 from causal_gym.core import PolicyType, ActType, ObsType
 
 class MDPExampleSCM(SCM):
-    """
-    A confounded MDP from CRL book Chap. 7 Example 7.2.
-    See also the inventory control example from Csaba 2010 - Algos for RL, Example 1.
-    By default the behavioral policy observes both the state 
-    and the confounder between state and reward.
-
-    Note that this environment never terminates but truncate at max_step (default: 30)
-    
-    All variables are binary (state, action, reward, confouders). 
-
-    ## Rewards
-
-    At each time step, a reward of '1' is given for success, and '0' for failure.
-
-    ## Termination
-
-    The episode ends if any one of the following conditions is met:
-
-    1. Timeout (see `max_steps`).
-
-    """
-
     def __init__(self, init_dist=[.5,.5], max_step=30):
         assert sum(init_dist) == 1.0, f"Init state distribution must sum to 1!"
         self.init_dist = init_dist

@@ -95,7 +95,11 @@ class MABExampleSCM(SCM):
         self.y = int(self.rng.random() < success_prob)
         
         return None, self.y, True, False, {"arm": action, "reward": self.y}
-
+    
+    def change_policy(self, new_policy):
+        if new_policy != None:
+            self._policy = new_policy
+        return None
 
 class MABExamplePCH(PCH):
     """PCH wrapper for the MAB Example environment.
@@ -111,8 +115,6 @@ class MABExamplePCH(PCH):
     
     def see(self, bpolicy=None):
         """
-        Observe the environment with behavioral policy
-        
         Args:
             bpolicy: Optional custom behavioral policy
             

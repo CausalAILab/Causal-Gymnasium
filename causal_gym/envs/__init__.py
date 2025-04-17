@@ -3,6 +3,7 @@ from .windy_minigrid import WindyMiniGridSCM, WindyMiniGridPCH
 from .mdp_example import MDPExampleSCM, MDPExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
+from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
 
 from gymnasium.envs.registration import register
 register(
@@ -16,6 +17,12 @@ register(
 #     entry_point="causal_gym.envs:MDPExamplePCH",
 #     max_episode_steps=50,
 # )
+
+register(
+    id="causal_gym/CartPoleWind-v0",
+    entry_point="causal_gym.envs:CartPoleWindPCH",
+    max_episode_steps=200,
+)
 
 register(
     id="Custom-LavaCrossing-easy-v0",

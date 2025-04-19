@@ -50,7 +50,7 @@ class MNISTSCM(SCM):
         self.digit_0 = [img for img, label in self.binary_dataset if label == 0]
         self.digit_1 = [img for img, label in self.binary_dataset if label == 1]
 
-    def reset(self, *, seed: int = None, options: dict = None) -> Tuple[ObsType, dict]:
+    def reset(self, *, seed: int = None) -> Tuple[ObsType, dict]:
         self.rng = np.random.default_rng(seed)
 
         self._u = None
@@ -184,8 +184,8 @@ class MNISTPCH(PCH):
     def do(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         return self.env.step(action)
 
-    def reset(self, *, seed: int = None, options: dict = None) -> Tuple[ObsType, dict]:
-        return self.env.reset(seed=seed, options=options)
+    def reset(self, *, seed: int = None) -> Tuple[ObsType, dict]:
+        return self.env.reset(seed=seed)
 
     def render(self, render_mode = 'human') -> ObsType:
-        return self.env.render()
+        return self.env.render(render_mode=render_mode)

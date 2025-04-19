@@ -5,6 +5,7 @@ from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 
 from .mnist import MNISTSCM, MNISTPCH
+from .highway_single_step import HighwaySingleStepSCM, HighwaySingleStepPCH
 
 from gymnasium.envs.registration import register
 register(

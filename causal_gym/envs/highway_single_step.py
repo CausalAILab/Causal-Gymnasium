@@ -8,6 +8,8 @@ import gymnasium as gym
 from highway_env.vehicle.behavior import IDMVehicle
 from highway_env.envs.common.action import DiscreteMetaAction
 
+from PIL import Image, ImageDraw
+
 DANGER_DISTANCE = 30.0 # m
 
 class HighwaySingleStepSCM(SCM):
@@ -29,7 +31,8 @@ class HighwaySingleStepSCM(SCM):
         # set up behavioral policy
         self._meta_actions: DiscreteMetaAction = self._env.unwrapped.action_type
         self._actions_reverse = {v: k for k, v in self._meta_actions.actions.items()}
-        # TODO decide on the policy to use in action()
+        # TODO come up with more complex behavioral policy in action()
+        # perhaps modify IDMVehicle to use the tail light as a signal for braking
 
         self._u = None # weather
         self._l = None # front car tail light TODO show graphicaly somehow
@@ -64,9 +67,9 @@ class HighwaySingleStepSCM(SCM):
             return self._actions_reverse['SLOWER']
         
         # otherwise, copy front car velocity
-        if z is None or z > 0:
+        if z is None or z > self.x:
             action = 'FASTER'
-        elif z == 0:
+        elif z == self.x:
             action = 'IDLE'
         else:
             action = 'SLOWER'
@@ -144,7 +147,24 @@ class HighwaySingleStepSCM(SCM):
         return obs, rew, True, True, {'u': self._u, 'l': self._l, 'y': self.y}
 
     def render(self) -> ObsType:
-        return self._env.render()
+        frame = self._env.render()
+
+        front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
+        if front_vehicle is None:
+            return frame
+        
+        # add front car tail light indicator
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+
+        viewer = self._env.unwrapped.viewer
+        x, y = viewer.sim_surface.pos2pix(front_vehicle.position[0], front_vehicle.position[1])
+
+        if self._l == 1:
+            r = 4.5
+            draw.rectangle((x - 3*r, y - r, x - 2*r, y + r), fill=(255, 100, 0), outline=(255, 100, 0))
+
+        return np.array(img)
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
@@ -203,4 +223,4 @@ class HighwaySingleStepPCH(PCH):
 
     def render(self) -> Any:
         '''Forced mode rgb_array for this environment.'''
-        return self.env._env.render()
+        return self.env.render()

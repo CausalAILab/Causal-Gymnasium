@@ -53,23 +53,24 @@ class HighwaySingleStepSCM(SCM):
         self.x = self._env.unwrapped.vehicle.velocity[0]
         self.z = self.calc_z()
         self._l = self.calc_l(self.x, self.z)
-        self.w = self.calc_w()
+        self.w = self.calc_w(self._u, self._l)
         self.y = None
 
         obs = {'x': self.x, 'z': self.z, 'w': self.w}
         info = {'u': self._u, 'l': self._l, 'y': self.y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, info
     
-    def action(self, l, z) -> ActType:
-        # placeholder behavioral policy:
+    def action(self, x, z, w, l) -> ActType:
+        # placeholder behavioral policy
+        # note that w is not used in this policy
         # if tail light is on, slow down
         if l == 1:
             return self._actions_reverse['SLOWER']
         
         # otherwise, copy front car velocity
-        if z is None or z > self.x:
+        if z is None or z > x:
             action = 'FASTER'
-        elif z == self.x:
+        elif z == x:
             action = 'IDLE'
         else:
             action = 'SLOWER'
@@ -108,23 +109,25 @@ class HighwaySingleStepSCM(SCM):
         self.z = front_vehicle.velocity[0]
         return self.z
     
-    def calc_w(self) -> int:
-        '''Calculate W from environment.'''
-        ego = self._env.unwrapped.vehicle
-        if ego.lane_index[2] == 0:
-            self.w = 0 # no left lane, so no left vehicle
-        else:
-            left_lane_index = (ego.lane_index[0], ego.lane_index[1], ego.lane_index[2] - 1)
-            left_vehicle = self._env.unwrapped.road.neighbour_vehicles(ego, left_lane_index)[0]
-            if left_vehicle is not None:
-                acc = left_vehicle.acceleration(ego_vehicle=left_vehicle)
-                if acc < -3.0: # -3.0 m/s^2, likely braking (according to Google)
-                    self.w = 1
-                else: # not braking
-                    self.w = 0
-            else: # no left vehicle, so no braking
-                self.w = 0
+    def calc_w(self, u, l) -> int:
+        '''Calculate W from SCM specification.'''
+        self.w = u and l
         return self.w
+        # ego = self._env.unwrapped.vehicle
+        # if ego.lane_index[2] == 0:
+        #     self.w = 0 # no left lane, so no left vehicle
+        # else:
+        #     left_lane_index = (ego.lane_index[0], ego.lane_index[1], ego.lane_index[2] - 1)
+        #     left_vehicle = self._env.unwrapped.road.neighbour_vehicles(ego, left_lane_index)[0]
+        #     if left_vehicle is not None:
+        #         acc = left_vehicle.acceleration(ego_vehicle=left_vehicle)
+        #         if acc < -3.0: # -3.0 m/s^2, likely braking (according to Google)
+        #             self.w = 1
+        #         else: # not braking
+        #             self.w = 0
+        #     else: # no left vehicle, so no braking
+        #         self.w = 0
+        # return self.w
     
     def step(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:   
         # step actual environment
@@ -138,9 +141,15 @@ class HighwaySingleStepSCM(SCM):
         self.x = self._env.unwrapped.vehicle.velocity[0]
         self.z = self.calc_z()
         self.calc_l(self.x, self.z)
-        self.calc_w()
+        self.calc_w(self._u, self._l)
 
-        self.y = reward
+        # following SCM specification
+        if self.z is not None:
+            indicator = self.x - self.z > -0.4
+        else:
+            indicator = 0
+            
+        self.y = (self._u and not indicator) or (not self._u and indicator)
         rew = self.y if show_reward else None
 
         obs = {'x': self.x, 'z': self.z, 'w': self.w}
@@ -203,20 +212,22 @@ class HighwaySingleStepPCH(PCH):
         self.env = HighwaySingleStepSCM(config=config, seed=seed)
         super().__init__()
 
-    def see(self, behavioral_policy=None) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
+    def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
+        x = self.env.x
         z = self.env.calc_z()
+        w = None # should not be used in a successful policy
         l = self.env.calc_l(self.env.x, z)
 
         if behavioral_policy is not None:
-            action = behavioral_policy(l, z)
+            action = behavioral_policy(x, z, w, l)
         else:
-            action = self.env.action(l, z)
+            action = self.env.action(x, z, w, l)
 
-        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
         return action, obs, reward, terminated, truncated, info
 
-    def do(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action)
+    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+        return self.env.step(action, show_reward=show_reward)
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

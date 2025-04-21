@@ -203,6 +203,10 @@ class HighwaySingleStepSCM(SCM):
         ]
 
         return nodes, base_graph, conf_graph
+    
+    @property
+    def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
+        return ['X', 'Z', 'W'], ['L', 'Y']
 
 class HighwaySingleStepPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''

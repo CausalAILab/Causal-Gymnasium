@@ -161,6 +161,10 @@ class MNISTSCM(SCM):
         ]
 
         return nodes, base_graph, conf_graph
+    
+    @property
+    def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
+        return ['X', 'W', 'S'], ['Y']
 
 
 class MNISTPCH(PCH):

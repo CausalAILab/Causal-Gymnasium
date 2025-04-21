@@ -4,6 +4,7 @@ from typing import Any, Tuple, Dict
 from causal_gym import SCM, PCH
 from causal_gym.core import ObsType, ActType
 import gymnasium as gym
+from gymnasium import spaces
 
 from highway_env.vehicle.behavior import IDMVehicle
 from highway_env.envs.common.action import DiscreteMetaAction
@@ -22,7 +23,14 @@ class HighwaySingleStepSCM(SCM):
 
         # configurations for highway environment
         self.config = config or {}
-        self.config['offscreen_rendering'] = True
+        self.config.update({
+            'offscreen_rendering': True,
+            'action': {
+                'type': 'DiscreteMetaAction',
+                'longitudal': True,
+                'lateral': False
+            }
+        })
 
         # internal env
         self._env = gym.make('highway-v0', config=self.config, render_mode='rgb_array')
@@ -35,21 +43,28 @@ class HighwaySingleStepSCM(SCM):
         # perhaps modify IDMVehicle to use the tail light as a signal for braking
 
         self._u = None # weather
-        self._l = None # front car tail light TODO show graphicaly somehow
+        self._l = None # front car tail light
         self.x = None # ego velocity
         self.z = None # front car velocity
         self.w = None # if left car is braking
         self.y = None # latent reward
 
-        self.action_space = self._env.action_space # only longitudal actions used
-        self.observation_space = self._env.observation_space
+        # TODO determine which option is more appropriate
+        self.action_space = self._env.action_space
+        # self.observation_space = self._env.observation_space
+        # self.action_space = spaces.Discrete(3) # only longitudal used
+        self.observation_space = spaces.Dict({
+            'x': spaces.Box(low=0.0, high=np.inf, shape=(), dtype=np.float32),
+            'z': spaces.Box(low=0.0, high=np.inf, shape=(), dtype=np.float32),
+            'w': spaces.Discrete(2)
+        })
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         self.rng = np.random.default_rng(seed)
         
         env_obs, env_info = self._env.reset()
 
-        self._u = None
+        self._u = self.sample_u()
         self.x = self._env.unwrapped.vehicle.velocity[0]
         self.z = self.calc_z()
         self._l = self.calc_l(self.x, self.z)
@@ -93,17 +108,17 @@ class HighwaySingleStepSCM(SCM):
             self._l = 0 # no front car, so tail light is off
         return self._l
     
-    def calc_z(self) -> int:
+    def calc_z(self) -> float:
         '''Calculate Z from environment.'''
         ego = self._env.unwrapped.vehicle
         front_vehicle = self._env.unwrapped.road.neighbour_vehicles(ego)[0]
 
         if front_vehicle is None:
-            self.z = None
+            self.z = 30.0
             return self.z
 
         if np.linalg.norm(front_vehicle.position - ego.position) > DANGER_DISTANCE:
-            self.z = None
+            self.z = 30.0
             return self.z
 
         self.z = front_vehicle.velocity[0]

@@ -88,7 +88,7 @@ def evaluate_policy(policy, policy_name, N_SAMPLES=2000, env=None):
         'daily_profits': daily_profits
     }
 
-def collect_interventional_data(n_samples=1000, MAX_STEPS=10000):
+def collect_interventional_data_mdp(n_samples=1000, MAX_STEPS=10000):
     '''
     Collect data on transitions and rewards using atomic interventions.
     
@@ -149,7 +149,7 @@ def collect_interventional_data(n_samples=1000, MAX_STEPS=10000):
         'counts': counts
     }
 
-def collect_observational_data(n_samples=1000, MAX_STEPS=10000):
+def collect_observational_data_mdp(n_samples=1000, MAX_STEPS=10000):
     '''
     Collect observational data on transitions and rewards.
     

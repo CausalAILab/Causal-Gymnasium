@@ -6,7 +6,7 @@ from causal_gym.core import PolicyType, ActType, ObsType
 
 class DTRExampleSCM(SCM):
     """
-    A 2-stage Dynamic Treatment Regime (DTR) example from CRL book Chap. 8 Example 8.6.
+    A 2-stage Dynamic Treatment Regime (DTR) example from CRL book Chap. 8 Equation 8.2
     
     This implements a health treatment scenario where a physician must decide on 
     an initial treatment X1 and a follow-up treatment X2 for a patient.

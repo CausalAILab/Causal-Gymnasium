@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Any, Tuple, Dict, List
+import pygame
 
 from causal_gym import SCM, PCH
 from causal_gym.core import ObsType, ActType
@@ -126,6 +127,7 @@ class HighwaySCM(SCM):
 
     def action(self, X: List[int], D: List[int], L: List[int], I: List[int]) -> ActType:
         # check for fog using lane reading and previous action
+        drive_carefully = False
         if len(X) >= 1 and len(L) >= 2:
             last_lane_reading = L[-2]
 
@@ -136,7 +138,7 @@ class HighwaySCM(SCM):
 
             if last_lane_reading != L[-1]:
                 # infer fog, drive carefully
-                return self._actions_reverse['IDLE']
+                drive_carefully = True
 
         if I[-1] == 1 and D[-1] < DANGER_DISTANCE:
             return self._actions_reverse['SLOWER']
@@ -150,7 +152,7 @@ class HighwaySCM(SCM):
 
             return self._actions_reverse['SLOWER']
 
-        return self._actions_reverse['FASTER']
+        return self._actions_reverse['FASTER' if not drive_carefully else 'IDLE']
 
     def observation(self):
         return {'X': self.X, 'D': self.D, 'L': self.L}
@@ -191,36 +193,27 @@ class HighwaySCM(SCM):
         return obs, Y_t if show_reward else None, terminated, self.t >= self.num_steps, info
 
     def render(self) -> ObsType:
-        if self.render_mode == 'rgb_array':
-            frame = self._env.render()
+        frame = self._env.render()
 
-            front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
-            if front_vehicle is None:
-                return frame
-
-            # add front car tail light indicator
-            img = Image.fromarray(frame)
-            draw = ImageDraw.Draw(img)
-
+        if self._env.render_mode != 'rgb_array':
             viewer = self._env.unwrapped.viewer
-            x, y = viewer.sim_surface.pos2pix(front_vehicle.position[0], front_vehicle.position[1])
 
-            if self._I[-1] == 1:
-                r = 4.5
-                draw.rectangle((x - 3*r, y - r, x - 2*r, y + r), fill=(255, 100, 0), outline=(255, 100, 0))
+            front = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
+            if front is not None:
+                x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
 
-            return np.array(img)
+                screen = pygame.display.get_surface()
 
-        else:
-            self._env.render()
+                if self._I[-1] == 1:
+                    r = 4.5
+                    rect = pygame.Rect(x - 3*r, y - r, r, 2*r)
+                    pygame.draw.rect(screen, (255,100,0), rect)
 
-            light = 'ON' if self._I[-1] == 1 else 'OFF'
-            weather = 'FOGGY' if self._U[-1] == 1 else 'CLEAR'
-            
-            import pygame
-            pygame.display.set_caption(f'Highway — Tail: {light}, Fog: {weather}')
+                weather  = 'Clear' if self._U[-1] == 1 else 'Foggy'
+                pygame.display.set_caption(f'Highway — Weather: {weather}')
+                pygame.display.flip()
 
-            return None
+        return frame
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:

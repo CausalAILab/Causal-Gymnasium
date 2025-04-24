@@ -1,0 +1,312 @@
+import numpy as np
+from typing import Any, Tuple, Dict, List
+
+from causal_gym import SCM, PCH
+from causal_gym.core import ObsType, ActType
+import gymnasium as gym
+from gymnasium import spaces
+
+from highway_env.envs.common.action import DiscreteMetaAction
+
+from PIL import Image, ImageDraw
+
+DANGER_DISTANCE = 30.0 # m
+
+class HighwaySCM(SCM):
+    ''' Causal environment for the single step highway driving scenario.'''
+
+    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human'):
+        super().__init__()
+
+        self.rng = np.random.default_rng(seed)
+
+        self.num_steps = num_steps
+        self.t = 0 # current timestep
+
+        # configurations for highway environment
+        self.config = config or {}
+
+        # internal env
+        self._env = gym.make('highway-v0', config=self.config, render_mode=render_mode)
+        self._env.reset(seed=seed)
+
+        # set up behavioral policy
+        self._meta_actions: DiscreteMetaAction = self._env.unwrapped.action_type
+        self._actions_reverse = {v: k for k, v in self._meta_actions.actions.items()}
+        self.num_lanes = self._env.unwrapped.config['lanes_count']
+
+        # covariates
+        self.D = [] # distance to front car
+        self.L = [] # current lane index
+
+        # latents
+        self._I = [] # front car's tail light indicator
+
+        # confounder
+        self._U = [] # fog
+
+        # action
+        self.X = [] # lane left, idle, lane right, faster, slower
+
+        # reward
+        self._Y = [] # rewards driving fast without crashing
+
+        self.action_space = self._env.action_space # spaces.Discrete(5)
+        self.observation_space = Dict({
+            'X': spaces.Sequence(spaces.Discrete(self.action_space.n)), # a list of actions
+            'D': spaces.Sequence(spaces.Box(0.0, np.inf, shape=(), dtype=np.float32)), # a list of distances
+            'L': spaces.Sequence(spaces.Discrete(self.num_lanes)), # a list of lane indices
+        })
+
+    def calc_D(self) -> float:
+        ego = self._env.unwrapped.vehicle
+        front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
+
+        if front_vehicle is None:
+            return np.inf
+
+        return ego.position[0] - front_vehicle.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
+
+    def calc_L(self, U: int) -> int:
+        true_lane = self._env.unwrapped.vehicle.lane_index[2]
+
+        # fog leads to noisy lane reading
+        if U == 1:
+            conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.15, 0.7, 0.15])
+            if conf_lane < 0  or conf_lane >= self.num_lanes:
+                return true_lane
+
+            return conf_lane
+        
+        return true_lane
+
+    def calc_I(self, D: float) -> int:
+        front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
+        if front_vehicle is None:
+            return 0
+
+        acc = front_vehicle.acceleration(ego_vehicle=front_vehicle)
+        is_braking = acc < -1.0 # m/s^2
+        too_close = D < DANGER_DISTANCE
+
+        if is_braking and too_close:
+            return self.rng.choice(2, p=[0.1, 0.9])
+
+        return self.rng.choice(2, p=[0.9, 0.1])
+
+    def sample_U(self, U: int) -> int:
+        # 0 = clear vision, 1 = foggy weather
+
+        # first step only, no history yet
+        if U is None:
+            return self.rng.choice(2, p=[0.8, 0.2])
+        
+        # if not first step, more likely to keep weather condition from previous step
+        p = 0.8 if U == 0 else 0.2
+        return self.rng.choice(2, p=[p, 1 - p])
+
+    def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
+        self.rng = np.random.default_rng(seed)
+
+        env_obs, env_info = self._env.reset()
+
+        self.t = 0
+
+        self._U = [self.sample_U(None)]
+        self.D = [self.calc_D()]
+        self.L = [self.calc_L(self._U[self.t])]
+        self._I = [self.calc_I(self.D[self.t])]
+        self.X = []
+        self._Y = []
+
+        obs = {'X': self.X, 'D': self.D, 'L': self.L}
+        info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+        return obs, info
+
+    def action(self, X: List[int], D: List[int], L: List[int], I: List[int]) -> ActType:
+        # check for fog using lane reading and previous action
+        if len(X) >= 1 and len(L) >= 2:
+            last_lane_reading = L[-2]
+
+            if X[-1] == self._actions_reverse['LANE_RIGHT']:
+                last_lane_reading += 1
+            elif X[-1] == self._actions_reverse['LANE_LEFT']:
+                last_lane_reading -= 1
+
+            if last_lane_reading != L[-1]:
+                # infer fog, drive carefully
+                return self._actions_reverse['IDLE']
+
+        if I[-1] == 1 and D[-1] < DANGER_DISTANCE:
+            return self._actions_reverse['SLOWER']
+
+        if D[-1] < DANGER_DISTANCE:
+            if L[-1] > 0:
+                return self._actions_reverse['LANE_LEFT']
+
+            if L[-1] < self.num_lanes - 1:
+                return self._actions_reverse['LANE_RIGHT']
+
+            return self._actions_reverse['SLOWER']
+
+        return self._actions_reverse['FASTER']
+
+    def observation(self):
+        return {'X': self.X, 'D': self.D, 'L': self.L}
+
+    def step(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+        self.X.append(action)
+
+        U_t = self._U[self.t]
+        D_t = self.D[self.t]
+        X_t = self.X[self.t]
+
+        env_obs, _, terminated, _, env_info = self._env.step(action)
+
+        ego = self._env.unwrapped.vehicle
+        speed = ego.velocity[0]
+
+        if D_t < DANGER_DISTANCE and X_t == self._actions_reverse['FASTER']:
+            Y_t = -10.0  * (2.0 if U_t == 1 else 1.0) # punish dangerous driving more in fog
+        else:
+            # reward careful driving in fog
+            if U_t == 0:
+                Y_t = speed
+            else:
+                Y_t = speed * (1.0 if X_t != self._actions_reverse['FASTER'] else 0.5)
+
+        self._Y.append(Y_t)
+
+        self.t += 1
+
+        self._U.append(self.sample_U(U_t))
+        self.D.append(self.calc_D())
+        self.L.append(self.calc_L(self._U[self.t]))
+        self._I.append(self.calc_I(self.D[self.t]))
+
+        obs = {'X': self.X, 'D': self.D, 'L': self.L}
+        info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+
+        return obs, Y_t if show_reward else None, terminated, self.t >= self.num_steps, info
+
+    def render(self) -> ObsType:
+        if self.render_mode == 'rgb_array':
+            frame = self._env.render()
+
+            front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
+            if front_vehicle is None:
+                return frame
+
+            # add front car tail light indicator
+            img = Image.fromarray(frame)
+            draw = ImageDraw.Draw(img)
+
+            viewer = self._env.unwrapped.viewer
+            x, y = viewer.sim_surface.pos2pix(front_vehicle.position[0], front_vehicle.position[1])
+
+            if self._I[-1] == 1:
+                r = 4.5
+                draw.rectangle((x - 3*r, y - r, x - 2*r, y + r), fill=(255, 100, 0), outline=(255, 100, 0))
+
+            return np.array(img)
+
+        else:
+            self._env.render()
+
+            viewer = self._env.unwrapped.viewer
+            if hasattr(viewer, 'window') and viewer.window is not None:
+                light = 'ON' if self._I[-1] == 1 else 'OFF'
+                weather = 'FOGGY' if self._U[-1] == 1 else 'CLEAR'
+                viewer.window.set_caption(f'Highway (Taillight: {light}, Weather: {weather})')
+
+            return None
+
+    @property
+    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
+        variables = ['D', 'L', 'I', 'U', 'X', 'Y']
+        n = (self.num_steps) * len(variables)
+
+        nodes = {}
+        i = 0
+        for t in range(self.num_steps):
+            for v in variables:
+                nodes[i] = f'{v}{t}'
+                i += 1
+
+        base_graph = [[0]*n for _ in range(n)]
+        conf_graph = [[0]*n for _ in range(n)]
+
+        # intra-timestep edges
+        for t in range(self.num_steps):
+            base = t * len(variables)
+            d, l, i, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5
+
+            base_graph[d][i] = 1 # close distance turns on indicator
+            base_graph[d][x] = 1 # action chosen based on distance
+            base_graph[d][y] = 1 # reward affected by distance
+            base_graph[i][x] = 1 # expert uses indicator to avoid tailgating
+            base_graph[x][y] = 1 # driving decisions affect reward function
+            base_graph[l][x] = 1 # current lane restricts some actions e.g. veering offroad
+
+            # not using conf_graph because U needs temporal dependency
+            base_graph[u][l] = 1 # fog adds noise to lane reading
+            base_graph[u][y] = 1 # fog changes what is rewarded and how much
+
+        # inter-timstep edges
+        for t in range(self.num_steps - 1):
+            base = t * len(variables)
+            base_next = (t + 1) * len(variables)
+
+            d, l, u, x = base, base + 1, base + 3, base + 4
+            d2, l2, u2, x2 = base_next, base_next + 1, base_next + 3, base_next + 4
+
+            base_graph[d][d2] = 1 # distance affects itself over time
+            base_graph[x][d2] = 1 # acceleration/lane changes affect distance
+            base_graph[l][l2] = 1 # lane dependent on previous lane
+            base_graph[x][l2] = 1 # lange change action affects lane
+            base_graph[u][u2] = 1 # weather more likely to persist
+
+            # trying this out
+            base_graph[x][x2] = 1 # expert uses previous action for fog inference
+            base_graph[l][x2] = 1 # expert cross-checks lane readings with prev action
+
+        return nodes, base_graph, conf_graph
+
+    @property
+    def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
+        return ['X', 'D', 'L'], ['I', 'U', 'Y']
+
+class HighwayPCH(PCH):
+    '''PCH wrapper for the HighwaySCM env'''
+
+    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human'):
+        # initialize underlying SCM
+        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode)
+        super().__init__()
+
+    def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
+        X = self.env.X
+        D = self.env.D
+        L = self.env.L
+        _I = self.env._I
+
+        if behavioral_policy is not None:
+            action = behavioral_policy(X, D, L, _I)
+        else:
+            action = self.env.action(X, D, L, _I)
+
+        obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
+        return action, obs, reward, terminated, truncated, info
+
+    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
+        return self.env.step(action, show_reward=show_reward)
+
+    def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
+        return self.env.reset(seed=seed)
+
+    def render(self) -> Any:
+        return self.env.render()
+
+    def extract(self, obs, node):
+        var, idx = node[0], int(node[1:])
+        return obs[var][idx]

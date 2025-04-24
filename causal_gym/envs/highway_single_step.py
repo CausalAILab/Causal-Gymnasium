@@ -6,7 +6,6 @@ from causal_gym.core import ObsType, ActType
 import gymnasium as gym
 from gymnasium import spaces
 
-from highway_env.vehicle.behavior import IDMVehicle
 from highway_env.envs.common.action import DiscreteMetaAction
 
 from PIL import Image, ImageDraw

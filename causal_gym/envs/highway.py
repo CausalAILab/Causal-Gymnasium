@@ -52,7 +52,7 @@ class HighwaySCM(SCM):
         self._Y = [] # rewards driving fast without crashing
 
         self.action_space = self._env.action_space # spaces.Discrete(5)
-        self.observation_space = Dict({
+        self.observation_space = spaces.Dict({
             'X': spaces.Sequence(spaces.Discrete(self.action_space.n)), # a list of actions
             'D': spaces.Sequence(spaces.Box(0.0, np.inf, shape=(), dtype=np.float32)), # a list of distances
             'L': spaces.Sequence(spaces.Discrete(self.num_lanes)), # a list of lane indices
@@ -65,7 +65,7 @@ class HighwaySCM(SCM):
         if front_vehicle is None:
             return np.inf
 
-        return ego.position[0] - front_vehicle.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
+        return front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
 
     def calc_L(self, U: int) -> int:
         true_lane = self._env.unwrapped.vehicle.lane_index[2]

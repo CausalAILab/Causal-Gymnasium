@@ -10,7 +10,7 @@ from highway_env.envs.common.action import DiscreteMetaAction
 
 from PIL import Image, ImageDraw
 
-DANGER_DISTANCE = 30.0 # m
+DANGER_DISTANCE = 20.0 # m
 
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
@@ -19,6 +19,7 @@ class HighwaySCM(SCM):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
+        self.render_mode = render_mode
 
         self.num_steps = num_steps
         self.t = 0 # current timestep
@@ -213,11 +214,11 @@ class HighwaySCM(SCM):
         else:
             self._env.render()
 
-            viewer = self._env.unwrapped.viewer
-            if hasattr(viewer, 'window') and viewer.window is not None:
-                light = 'ON' if self._I[-1] == 1 else 'OFF'
-                weather = 'FOGGY' if self._U[-1] == 1 else 'CLEAR'
-                viewer.window.set_caption(f'Highway (Taillight: {light}, Weather: {weather})')
+            light = 'ON' if self._I[-1] == 1 else 'OFF'
+            weather = 'FOGGY' if self._U[-1] == 1 else 'CLEAR'
+            
+            import pygame
+            pygame.display.set_caption(f'Highway — Tail: {light}, Fog: {weather}')
 
             return None
 

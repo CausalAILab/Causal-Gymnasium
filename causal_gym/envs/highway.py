@@ -12,6 +12,7 @@ from highway_env.envs.common.action import DiscreteMetaAction
 from PIL import Image, ImageDraw
 
 DANGER_DISTANCE = 20.0 # m
+MERGE_DANGER_DISTANCE = 10.0 # m
 
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
@@ -40,6 +41,8 @@ class HighwaySCM(SCM):
         # covariates
         self.D = [] # distance to front car
         self.L = [] # current lane index
+        self.A = [] # left lane open
+        self.B = [] # right lane open
 
         # latents
         self._I = [] # front car's tail light indicator
@@ -58,6 +61,8 @@ class HighwaySCM(SCM):
             'X': spaces.Sequence(spaces.Discrete(self.action_space.n)), # a list of actions
             'D': spaces.Sequence(spaces.Box(0.0, np.inf, shape=(), dtype=np.float32)), # a list of distances
             'L': spaces.Sequence(spaces.Discrete(self.num_lanes)), # a list of lane indices
+            'A': spaces.Sequence(spaces.Discrete(2)),
+            'B': spaces.Sequence(spaces.Discrete(2))
         })
 
     def calc_D(self) -> float:
@@ -74,7 +79,7 @@ class HighwaySCM(SCM):
 
         # fog leads to noisy lane reading
         if U == 1:
-            conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.15, 0.7, 0.15])
+            conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.2, 0.6, 0.2])
             if conf_lane < 0  or conf_lane >= self.num_lanes:
                 return true_lane
 
@@ -95,13 +100,55 @@ class HighwaySCM(SCM):
             return self.rng.choice(2, p=[0.1, 0.9])
 
         return self.rng.choice(2, p=[0.9, 0.1])
+    
+    def calc_A(self, L: int) -> int:
+        if L == 0:
+            return 0
+
+        ego = self._env.unwrapped.vehicle
+        road = self._env.unwrapped.road
+        left_lane = (ego.lane_index[0], ego.lane_index[1], L - 1)
+        left_front, left_back = road.neighbour_vehicles(self._env.unwrapped.vehicle, lane_index=left_lane)
+
+        if left_front is not None \
+            and MERGE_DANGER_DISTANCE > left_front.position[0] - ego.position[0] \
+                - left_front.LENGTH / 2 - ego.LENGTH / 2:
+            return 0
+        
+        if left_back is not None \
+            and MERGE_DANGER_DISTANCE / 2 > ego.position[0] - left_back.position[0] \
+                - ego.LENGTH / 2 - left_back.LENGTH / 2:
+            return 0
+
+        return 1
+    
+    def calc_B(self, L: int) -> int:
+        if L == self.num_lanes - 1:
+            return 0
+
+        ego = self._env.unwrapped.vehicle
+        road = self._env.unwrapped.road
+        right_lane = (ego.lane_index[0], ego.lane_index[1], L + 1)
+        right_front, right_back = road.neighbour_vehicles(self._env.unwrapped.vehicle, lane_index=right_lane)
+
+        if right_front is not None \
+            and MERGE_DANGER_DISTANCE > right_front.position[0] - ego.position[0] \
+                - right_front.LENGTH / 2 - ego.LENGTH / 2:
+            return 0
+        
+        if right_back is not None \
+            and MERGE_DANGER_DISTANCE / 2 > ego.position[0] - right_back.position[0] \
+                - ego.LENGTH / 2 - right_back.LENGTH / 2:
+            return 0
+
+        return 1
 
     def sample_U(self, U: int) -> int:
         # 0 = clear vision, 1 = foggy weather
 
         # first step only, no history yet
         if U is None:
-            return self.rng.choice(2, p=[0.8, 0.2])
+            return self.rng.choice(2, p=[0.9, 0.1])
         
         # if not first step, more likely to keep weather condition from previous step
         p = 0.8 if U == 0 else 0.2
@@ -118,14 +165,16 @@ class HighwaySCM(SCM):
         self.D = [self.calc_D()]
         self.L = [self.calc_L(self._U[self.t])]
         self._I = [self.calc_I(self.D[self.t])]
+        self.A = [self.calc_A(self.L[self.t])]
+        self.B = [self.calc_B(self.L[self.t])]
         self.X = []
         self._Y = []
 
-        obs = {'X': self.X, 'D': self.D, 'L': self.L}
+        obs = self.observation()
         info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, info
 
-    def action(self, X: List[int], D: List[int], L: List[int], I: List[int]) -> ActType:
+    def action(self, X: List[int], D: List[float], L: List[int], I: List[int], A: List[int], B: List[int]) -> ActType:
         # check for fog using lane reading and previous action
         drive_carefully = False
         if len(X) >= 1 and len(L) >= 2:
@@ -144,10 +193,10 @@ class HighwaySCM(SCM):
             return self._actions_reverse['SLOWER']
 
         if D[-1] < DANGER_DISTANCE:
-            if L[-1] > 0:
+            if A[-1]:
                 return self._actions_reverse['LANE_LEFT']
 
-            if L[-1] < self.num_lanes - 1:
+            if B[-1]:
                 return self._actions_reverse['LANE_RIGHT']
 
             return self._actions_reverse['SLOWER']
@@ -155,7 +204,18 @@ class HighwaySCM(SCM):
         return self._actions_reverse['FASTER' if not drive_carefully else 'IDLE']
 
     def observation(self):
-        return {'X': self.X, 'D': self.D, 'L': self.L}
+        return {'X': self.X, 'D': self.D, 'L': self.L, 'A': self.A, 'B': self.B}
+    
+    def _reward(self, X: int, D: float, U: int) -> float:
+        speed = self._env.unwrapped.vehicle.velocity[0]
+
+        if D < DANGER_DISTANCE and X == self._actions_reverse['FASTER']:
+            return -10.0 * (2.0 if U == 1 else 1.0)
+        
+        if U == 0:
+            return speed
+        
+        return speed * (1.0 if X != self._actions_reverse['FASTER'] else 0.5)
 
     def step(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         self.X.append(action)
@@ -166,18 +226,7 @@ class HighwaySCM(SCM):
 
         env_obs, _, terminated, _, env_info = self._env.step(action)
 
-        ego = self._env.unwrapped.vehicle
-        speed = ego.velocity[0]
-
-        if D_t < DANGER_DISTANCE and X_t == self._actions_reverse['FASTER']:
-            Y_t = -10.0  * (2.0 if U_t == 1 else 1.0) # punish dangerous driving more in fog
-        else:
-            # reward careful driving in fog
-            if U_t == 0:
-                Y_t = speed
-            else:
-                Y_t = speed * (1.0 if X_t != self._actions_reverse['FASTER'] else 0.5)
-
+        Y_t = self._reward(X_t, D_t, U_t)
         self._Y.append(Y_t)
 
         self.t += 1
@@ -186,8 +235,10 @@ class HighwaySCM(SCM):
         self.D.append(self.calc_D())
         self.L.append(self.calc_L(self._U[self.t]))
         self._I.append(self.calc_I(self.D[self.t]))
+        self.A.append(self.calc_A(self.L[self.t]))
+        self.B.append(self.calc_B(self.L[self.t]))
 
-        obs = {'X': self.X, 'D': self.D, 'L': self.L}
+        obs = self.observation()
         info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
 
         return obs, Y_t if show_reward else None, terminated, self.t >= self.num_steps, info
@@ -217,7 +268,7 @@ class HighwaySCM(SCM):
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        variables = ['D', 'L', 'I', 'U', 'X', 'Y']
+        variables = ['D', 'L', 'I', 'A', 'B', 'U', 'X', 'Y']
         n = (self.num_steps) * len(variables)
 
         nodes = {}
@@ -233,7 +284,7 @@ class HighwaySCM(SCM):
         # intra-timestep edges
         for t in range(self.num_steps):
             base = t * len(variables)
-            d, l, i, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5
+            d, l, i, a, b, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
 
             base_graph[d][i] = 1 # close distance turns on indicator
             base_graph[d][x] = 1 # action chosen based on distance
@@ -241,6 +292,10 @@ class HighwaySCM(SCM):
             base_graph[i][x] = 1 # expert uses indicator to avoid tailgating
             base_graph[x][y] = 1 # driving decisions affect reward function
             base_graph[l][x] = 1 # current lane restricts some actions e.g. veering offroad
+            base_graph[l][a] = 1 # current lane used to check left lane
+            base_graph[l][b] = 1 # current lane used to check right lane
+            base_graph[a][x] = 1 # left lane availability restricts some actions
+            base_graph[b][x] = 1 # right lane availability restricts some actions
 
             # not using conf_graph because U needs temporal dependency
             base_graph[u][l] = 1 # fog adds noise to lane reading
@@ -268,7 +323,7 @@ class HighwaySCM(SCM):
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
-        return ['X', 'D', 'L'], ['I', 'U', 'Y']
+        return ['X', 'D', 'L', 'A', 'B'], ['I', 'U', 'Y']
 
 class HighwayPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''
@@ -283,11 +338,13 @@ class HighwayPCH(PCH):
         D = self.env.D
         L = self.env.L
         _I = self.env._I
+        A = self.env.A
+        B = self.env.B
 
         if behavioral_policy is not None:
-            action = behavioral_policy(X, D, L, _I)
+            action = behavioral_policy(X, D, L, _I, A, B)
         else:
-            action = self.env.action(X, D, L, _I)
+            action = self.env.action(X, D, L, _I, A, B)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
         return action, obs, reward, terminated, truncated, info

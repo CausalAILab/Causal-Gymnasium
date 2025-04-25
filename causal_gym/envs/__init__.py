@@ -4,6 +4,7 @@ from .mdp_example import MDPExampleSCM, MDPExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
+from .frozen_lake import FrozenLakeSCM, FrozenLakePCH
 
 from gymnasium.envs.registration import register
 register(
@@ -52,5 +53,11 @@ register(
     id="Custom-LavaCrossing-maze-complex-v0",
     entry_point=CustomCrossingEnv,
     kwargs={"mode": 'maze2'},
+)
+
+register(
+    id="causal_gym/FrozenLakePCH-v0",
+    entry_point="causal_gym.envs:FrozenLakePCH",
+    max_episode_steps=100,
 )
 

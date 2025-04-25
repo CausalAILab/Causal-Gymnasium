@@ -9,8 +9,6 @@ from gymnasium import spaces
 
 from highway_env.envs.common.action import DiscreteMetaAction
 
-from PIL import Image, ImageDraw
-
 DANGER_DISTANCE = 20.0 # m
 MERGE_DANGER_DISTANCE = 10.0 # m
 
@@ -32,6 +30,43 @@ class HighwaySCM(SCM):
         # internal env
         self._env = gym.make('highway-v0', config=self.config, render_mode=render_mode)
         self._env.reset(seed=seed)
+
+        # show GUI for tail light indicator and fog
+        if self.render_mode == 'human':
+            self._env.render()
+            viewer = self._env.unwrapped.viewer
+
+            orig_display = viewer.display
+
+            def display_with_overlay():
+                orig_display()
+
+                screen = pygame.display.get_surface()
+
+                front = viewer.env.road.neighbour_vehicles(viewer.env.vehicle)[0]
+                if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
+                    x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
+                    r = 4.5
+                    rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
+                    pygame.draw.rect(screen, (255, 100, 0), rect)
+
+                if getattr(self, '_U', []) and self._U[-1] == 1:
+                    w, h = screen.get_size()
+                    alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
+                    alpha = np.clip(alpha, 0, 255).astype(np.uint8)
+
+                    fog = np.empty((h, w, 4), dtype=np.uint8)
+                    fog[..., :3] = 200
+                    fog[...,  3] = alpha
+
+                    buf = fog.tobytes()
+                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA') \
+                                          .convert_alpha()
+                    screen.blit(fog_surf, (0, 0))
+
+                pygame.display.flip()
+
+            viewer.display = display_with_overlay
 
         # set up behavioral policy
         self._meta_actions: DiscreteMetaAction = self._env.unwrapped.action_type
@@ -144,6 +179,7 @@ class HighwaySCM(SCM):
         return 1
 
     def sample_U(self, U: int) -> int:
+        # TODO remove persistence
         # 0 = clear vision, 1 = foggy weather
 
         # first step only, no history yet
@@ -244,25 +280,35 @@ class HighwaySCM(SCM):
         return obs, Y_t if show_reward else None, terminated, self.t >= self.num_steps, info
 
     def render(self) -> ObsType:
+        # still need this for one-step-at-a-time simulation
         frame = self._env.render()
 
         if self._env.render_mode != 'rgb_array':
             viewer = self._env.unwrapped.viewer
+            screen = pygame.display.get_surface()
 
-            front = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
-            if front is not None:
+            front = viewer.env.road.neighbour_vehicles(viewer.env.vehicle)[0]
+            if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
                 x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
+                r = 4.5
+                rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
+                pygame.draw.rect(screen, (255, 100, 0), rect)
 
-                screen = pygame.display.get_surface()
+            if getattr(self, '_U', []) and self._U[-1] == 1:
+                w, h = screen.get_size()
+                alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
+                alpha = np.clip(alpha, 0, 255).astype(np.uint8)
 
-                if self._I[-1] == 1:
-                    r = 4.5
-                    rect = pygame.Rect(x - 3*r, y - r, r, 2*r)
-                    pygame.draw.rect(screen, (255,100,0), rect)
+                fog = np.empty((h, w, 4), dtype=np.uint8)
+                fog[..., :3] = 200
+                fog[...,  3] = alpha
 
-                weather  = 'Clear' if self._U[-1] == 1 else 'Foggy'
-                pygame.display.set_caption(f'Highway — Weather: {weather}')
-                pygame.display.flip()
+                buf = fog.tobytes()
+                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA') \
+                                        .convert_alpha()
+                screen.blit(fog_surf, (0, 0))
+
+            pygame.display.flip()
 
         return frame
 

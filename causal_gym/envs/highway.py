@@ -178,17 +178,9 @@ class HighwaySCM(SCM):
 
         return 1
 
-    def sample_U(self, U: int) -> int:
-        # TODO remove persistence
+    def sample_U(self) -> int:
         # 0 = clear vision, 1 = foggy weather
-
-        # first step only, no history yet
-        if U is None:
-            return self.rng.choice(2, p=[0.9, 0.1])
-        
-        # if not first step, more likely to keep weather condition from previous step
-        p = 0.8 if U == 0 else 0.2
-        return self.rng.choice(2, p=[p, 1 - p])
+        return self.rng.choice(2, p=[0.8, 0.2])
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         self.rng = np.random.default_rng(seed)
@@ -197,7 +189,7 @@ class HighwaySCM(SCM):
 
         self.t = 0
 
-        self._U = [self.sample_U(None)]
+        self._U = [self.sample_U()]
         self.D = [self.calc_D()]
         self.L = [self.calc_L(self._U[self.t])]
         self._I = [self.calc_I(self.D[self.t])]
@@ -267,7 +259,7 @@ class HighwaySCM(SCM):
 
         self.t += 1
 
-        self._U.append(self.sample_U(U_t))
+        self._U.append(self.sample_U())
         self.D.append(self.calc_D())
         self.L.append(self.calc_L(self._U[self.t]))
         self._I.append(self.calc_I(self.D[self.t]))
@@ -343,23 +335,22 @@ class HighwaySCM(SCM):
             base_graph[a][x] = 1 # left lane availability restricts some actions
             base_graph[b][x] = 1 # right lane availability restricts some actions
 
-            # not using conf_graph because U needs temporal dependency
-            base_graph[u][l] = 1 # fog adds noise to lane reading
-            base_graph[u][y] = 1 # fog changes what is rewarded and how much
+            # fog confounds lane reading and reward function
+            conf_graph[l][y] = 1
+            conf_graph[y][l] = 1
 
         # inter-timstep edges
         for t in range(self.num_steps - 1):
             base = t * len(variables)
             base_next = (t + 1) * len(variables)
 
-            d, l, u, x = base, base + 1, base + 3, base + 4
-            d2, l2, u2, x2 = base_next, base_next + 1, base_next + 3, base_next + 4
+            d, l, i, a, b, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
+            d2, l2, i2, a2, b2, u2, x2, y2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7
 
             base_graph[d][d2] = 1 # distance affects itself over time
             base_graph[x][d2] = 1 # acceleration/lane changes affect distance
             base_graph[l][l2] = 1 # lane dependent on previous lane
             base_graph[x][l2] = 1 # lange change action affects lane
-            base_graph[u][u2] = 1 # weather more likely to persist
 
             # trying this out
             base_graph[x][x2] = 1 # expert uses previous action for fog inference

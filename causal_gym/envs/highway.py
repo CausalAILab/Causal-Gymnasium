@@ -234,7 +234,15 @@ class HighwaySCM(SCM):
     def observation(self):
         return {'X': self.X, 'D': self.D, 'L': self.L, 'A': self.A, 'B': self.B}
     
-    def _reward(self, X: int, D: float, U: int) -> float:
+    def _reward(self, X: int, D: float, A: int, B: int, U: int) -> float:
+        action = self._meta_actions.ACTIONS_ALL[X]
+
+        # punish crashes
+        if D < 1.0 or action == 'LANE_LEFT' and not A or action == 'LANE_RIGHT' and not B:
+            return -10.0
+
+        # otherwise compute based on fast and safe driving
+        # reward more careful driving in fog
         speed = self._env.unwrapped.vehicle.velocity[0]
 
         if D < DANGER_DISTANCE and X == self._actions_reverse['FASTER']:
@@ -251,10 +259,12 @@ class HighwaySCM(SCM):
         U_t = self._U[self.t]
         D_t = self.D[self.t]
         X_t = self.X[self.t]
+        A_t = self.A[self.t]
+        B_t = self.B[self.t]
 
         env_obs, _, terminated, _, env_info = self._env.step(action)
 
-        Y_t = self._reward(X_t, D_t, U_t)
+        Y_t = self._reward(X_t, D_t, A_t, B_t, U_t)
         self._Y.append(Y_t)
 
         self.t += 1
@@ -306,7 +316,7 @@ class HighwaySCM(SCM):
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        variables = ['D', 'L', 'I', 'A', 'B', 'U', 'X', 'Y']
+        variables = ['D', 'L', 'I', 'A', 'B', 'X', 'Y'] # U is implicit
         n = (self.num_steps) * len(variables)
 
         nodes = {}
@@ -322,7 +332,7 @@ class HighwaySCM(SCM):
         # intra-timestep edges
         for t in range(self.num_steps):
             base = t * len(variables)
-            d, l, i, a, b, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
+            d, l, i, a, b, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
 
             base_graph[d][i] = 1 # close distance turns on indicator
             base_graph[d][x] = 1 # action chosen based on distance
@@ -334,6 +344,8 @@ class HighwaySCM(SCM):
             base_graph[l][b] = 1 # current lane used to check right lane
             base_graph[a][x] = 1 # left lane availability restricts some actions
             base_graph[b][x] = 1 # right lane availability restricts some actions
+            base_graph[a][y] = 1 # reward func checks if left lane is open
+            base_graph[b][y] = 1 # reward func checks if right lane is open
 
             # fog confounds lane reading and reward function
             conf_graph[l][y] = 1
@@ -344,8 +356,8 @@ class HighwaySCM(SCM):
             base = t * len(variables)
             base_next = (t + 1) * len(variables)
 
-            d, l, i, a, b, u, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
-            d2, l2, i2, a2, b2, u2, x2, y2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7
+            d, l, i, a, b, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
+            d2, l2, i2, a2, b2, x2, y2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6
 
             base_graph[d][d2] = 1 # distance affects itself over time
             base_graph[x][d2] = 1 # acceleration/lane changes affect distance

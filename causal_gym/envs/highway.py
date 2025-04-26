@@ -43,7 +43,8 @@ class HighwaySCM(SCM):
 
                 screen = pygame.display.get_surface()
 
-                front = viewer.env.road.neighbour_vehicles(viewer.env.vehicle)[0]
+                ego = viewer.env.vehicle
+                front = viewer.env.road.neighbour_vehicles(ego)[0]
                 if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
                     x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
                     r = 4.5
@@ -60,9 +61,16 @@ class HighwaySCM(SCM):
                     fog[...,  3] = alpha
 
                     buf = fog.tobytes()
-                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA') \
-                                          .convert_alpha()
+                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
                     screen.blit(fog_surf, (0, 0))
+
+                if getattr(self, 'W', []) and self.W[-1] == 1:
+                    x, y = viewer.sim_surface.pos2pix(ego.position[0], ego.position[1])
+                    r = 4.5
+                    rect = pygame.Rect(int(x + 2*r), int(y - r), int(r), int(2*r))
+                    pygame.draw.rect(screen, (255, 200, 0), rect)
+
+                # keep Uwy hidden for now
 
                 pygame.display.flip()
 
@@ -187,17 +195,16 @@ class HighwaySCM(SCM):
     
     def calc_W(self, I: int, Uwy: int) -> int:
         # 0 = no warning, 1 = warning on
-
         if I == 1:
             if Uwy == 1:
                 return self.rng.choice(2, p=[0.1, 0.9]) # brake check and bad grip
 
-            return self.rng.choice(2, p=[0.6, 0.4]) # only brake check
+            return self.rng.choice(2, p=[0.4, 0.6]) # only brake check
         else:
             if Uwy == 1:
-                return self.rng.choice(2, p=[0.6, 0.4]) # only bad grip
+                return self.rng.choice(2, p=[0.7, 0.3]) # only bad grip
 
-            return self.rng.choice(2, p=[0.1, 0.9]) # no reason for warning
+            return self.rng.choice(2, p=[0.9, 0.1]) # no reason for warning
 
     def sample_Uly(self) -> int:
         # 0 = clear vision, 1 = foggy weather
@@ -279,8 +286,8 @@ class HighwaySCM(SCM):
         if D < DANGER_DISTANCE and action == 'FASTER':
             return -10.0 * (2.0 if Uly == 1 else 1.0)
         
-        # half reward if speeding up in dangerous conditions (fog or bad grip)
-        if (Uly == 1 or Uwy == 1) and action == 'FASTER':
+        # half reward if speeding up in dangerous conditions (fog and bad grip)
+        if Uly == 1 and Uwy == 1 and action == 'FASTER':
             return speed * 0.5
         
         # otherwise reward with current velocity
@@ -325,7 +332,8 @@ class HighwaySCM(SCM):
             viewer = self._env.unwrapped.viewer
             screen = pygame.display.get_surface()
 
-            front = viewer.env.road.neighbour_vehicles(viewer.env.vehicle)[0]
+            ego = viewer.env.vehicle
+            front = viewer.env.road.neighbour_vehicles(ego)[0]
             if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
                 x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
                 r = 4.5
@@ -342,9 +350,16 @@ class HighwaySCM(SCM):
                 fog[...,  3] = alpha
 
                 buf = fog.tobytes()
-                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA') \
-                                        .convert_alpha()
+                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
                 screen.blit(fog_surf, (0, 0))
+
+            if getattr(self, 'W', []) and self.W[-1] == 1:
+                x, y = viewer.sim_surface.pos2pix(ego.position[0], ego.position[1])
+                r = 4.5
+                rect = pygame.Rect(int(x + 2*r), int(y - r), int(r), int(2*r))
+                pygame.draw.rect(screen, (255, 200, 0), rect)
+
+            # keep Uwy hidden for now
 
             pygame.display.flip()
 

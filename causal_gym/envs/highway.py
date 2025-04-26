@@ -51,7 +51,7 @@ class HighwaySCM(SCM):
                     rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
                     pygame.draw.rect(screen, (255, 100, 0), rect)
 
-                if getattr(self, '_Uly', []) and self._Uly[-1] == 1:
+                if getattr(self, '_U', []) and self._U[-1] == 1:
                     w, h = screen.get_size()
                     alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
                     alpha = np.clip(alpha, 0, 255).astype(np.uint8)
@@ -91,9 +91,8 @@ class HighwaySCM(SCM):
         # latents
         self._I = [] # front car's tail light indicator
 
-        # confounders
-        self._Uly = [] # fog
-        self._Uwy = [] # road grip
+        # confounder
+        self._U = [] # fog
 
         # action
         self.X = [] # lane left, idle, lane right, faster, slower
@@ -122,20 +121,17 @@ class HighwaySCM(SCM):
 
         return front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
 
-    def calc_L(self, Uly: int) -> int:
+    def calc_L(self) -> int:
         # influence from previous L and X is intrinsic
 
         true_lane = self._env.unwrapped.vehicle.lane_index[2]
 
-        # fog leads to noisy lane reading
-        if Uly == 1:
-            conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.2, 0.6, 0.2])
-            if conf_lane < 0  or conf_lane >= self.num_lanes:
-                return true_lane
+        # lane readings aren't always correct
+        conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.1, 0.8, 0.1])
+        if conf_lane < 0  or conf_lane >= self.num_lanes:
+            return true_lane
 
-            return conf_lane
-        
-        return true_lane
+        return conf_lane
 
     def calc_I(self, D: float) -> int:
         front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
@@ -193,26 +189,22 @@ class HighwaySCM(SCM):
 
         return 1
     
-    def calc_W(self, I: int, Uwy: int) -> int:
+    def calc_W(self, I: int, U: int) -> int:
         # 0 = no warning, 1 = warning on
         if I == 1:
-            if Uwy == 1:
-                return self.rng.choice(2, p=[0.1, 0.9]) # brake check and bad grip
+            if U == 1:
+                return self.rng.choice(2, p=[0.1, 0.9]) # brake check and fog
 
             return self.rng.choice(2, p=[0.4, 0.6]) # only brake check
         else:
-            if Uwy == 1:
-                return self.rng.choice(2, p=[0.7, 0.3]) # only bad grip
+            if U == 1:
+                return self.rng.choice(2, p=[0.6, 0.4]) # only fog
 
             return self.rng.choice(2, p=[0.9, 0.1]) # no reason for warning
 
-    def sample_Uly(self) -> int:
+    def sample_U(self) -> int:
         # 0 = clear vision, 1 = foggy weather
         return self.rng.choice(2, p=[0.8, 0.2])
-    
-    def sample_Uwy(self) -> int:
-        # 0 = good grip, 1 = slippery road
-        return self.rng.choice(2) # uniform dist for maximum noise
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         self.rng = np.random.default_rng(seed)
@@ -221,14 +213,11 @@ class HighwaySCM(SCM):
 
         self.t = 0
 
-        self._Uly = [self.sample_Uly()]
-        self._Uwy = [self.sample_Uwy()]
-
+        self._U = [self.sample_U()]
         self.D = [self.calc_D()]
         self._I = [self.calc_I(self.D[self.t])]
-        self.W = [self.calc_W(self._I[self.t], self._Uwy[self.t])]
-
-        self.L = [self.calc_L(self._Uly[self.t])]
+        self.W = [self.calc_W(self._I[self.t], self._U[self.t])]
+        self.L = [self.calc_L()]
         self.A = [self.calc_A(self.L[self.t])]
         self.B = [self.calc_B(self.L[self.t])]
 
@@ -236,13 +225,13 @@ class HighwaySCM(SCM):
         self._Y = []
 
         obs = self.observation()
-        info = {'I': self._I, 'Uly': self._Uly, 'Uwy': self._Uwy, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+        info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, info
 
     def action(self, X: List[int], D: List[float], L: List[int], I: List[int], A: List[int], B: List[int], W: List[int]) -> ActType:
         # note that W is a red herring and should not be used        
 
-        # check for fog using lane reading and previous action
+        # verify lane reading using history
         drive_carefully = False
         if len(X) >= 1 and len(L) >= 2:
             last_lane_reading = L[-2]
@@ -253,7 +242,7 @@ class HighwaySCM(SCM):
                 last_lane_reading -= 1
 
             if last_lane_reading != L[-1]:
-                # infer fog, drive carefully
+                # detected lane reading anomaly
                 drive_carefully = True
 
         if I[-1] == 1 and D[-1] < DANGER_DISTANCE:
@@ -273,7 +262,7 @@ class HighwaySCM(SCM):
     def observation(self):
         return {'X': self.X, 'D': self.D, 'L': self.L, 'A': self.A, 'B': self.B, 'W': self.W}
     
-    def _reward(self, X: int, D: float, A: int, B: int, Uly: int, Uwy: int) -> float:
+    def _reward(self, X: int, D: float, A: int, B: int, U: int) -> float:
         action = self._meta_actions.ACTIONS_ALL[X]
 
         # punish crashes
@@ -284,10 +273,10 @@ class HighwaySCM(SCM):
 
         # punish accelerating while tailgating
         if D < DANGER_DISTANCE and action == 'FASTER':
-            return -10.0 * (2.0 if Uly == 1 else 1.0)
+            return -10.0 * (2.0 if U == 1 else 1.0) # punish more in fog
         
-        # half reward if speeding up in dangerous conditions (fog and bad grip)
-        if Uly == 1 and Uwy == 1 and action == 'FASTER':
+        # half reward if speeding up in fog
+        if U == 1 and action == 'FASTER':
             return speed * 0.5
         
         # otherwise reward with current velocity
@@ -296,8 +285,7 @@ class HighwaySCM(SCM):
     def step(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         self.X.append(action)
 
-        Uly_t = self._Uly[self.t]
-        Uwy_t = self._Uwy[self.t]
+        U_t = self._U[self.t]
         D_t = self.D[self.t]
         X_t = self.X[self.t]
         A_t = self.A[self.t]
@@ -305,22 +293,21 @@ class HighwaySCM(SCM):
 
         env_obs, _, terminated, _, env_info = self._env.step(action)
 
-        Y_t = self._reward(X_t, D_t, A_t, B_t, Uly_t, Uwy_t)
+        Y_t = self._reward(X_t, D_t, A_t, B_t, U_t)
         self._Y.append(Y_t)
 
         self.t += 1
 
-        self._Uly.append(self.sample_Uly())
-        self._Uwy.append(self.sample_Uwy())
+        self._U.append(self.sample_U())
         self.D.append(self.calc_D())
-        self.L.append(self.calc_L(self._Uly[self.t]))
+        self.L.append(self.calc_L())
         self._I.append(self.calc_I(self.D[self.t]))
         self.A.append(self.calc_A(self.L[self.t]))
         self.B.append(self.calc_B(self.L[self.t]))
-        self.W.append(self.calc_W(self._I[self.t], self._Uwy[self.t]))
+        self.W.append(self.calc_W(self._I[self.t], self._U[self.t]))
 
         obs = self.observation()
-        info = {'I': self._I, 'Uly': self._Uly, 'Uwy': self._Uwy, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+        info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
 
         return obs, Y_t if show_reward else None, terminated, self.t >= self.num_steps, info
 
@@ -340,7 +327,7 @@ class HighwaySCM(SCM):
                 rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
                 pygame.draw.rect(screen, (255, 100, 0), rect)
 
-            if getattr(self, '_Uly', []) and self._Uly[-1] == 1:
+            if getattr(self, '_U', []) and self._U[-1] == 1:
                 w, h = screen.get_size()
                 alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
                 alpha = np.clip(alpha, 0, 255).astype(np.uint8)
@@ -400,10 +387,6 @@ class HighwaySCM(SCM):
             base_graph[i][w] = 1 # front car tail light triggers dashboard warning
 
             # fog confounds lane reading and reward func
-            conf_graph[l][y] = 1
-            conf_graph[y][l] = 1
-
-            # road grip confounds dashboard warning and reward func
             conf_graph[w][y] = 1
             conf_graph[y][w] = 1
 
@@ -421,14 +404,14 @@ class HighwaySCM(SCM):
             base_graph[x][l2] = 1 # lange change action affects lane
 
             # trying this out
-            base_graph[x][x2] = 1 # expert uses previous action for fog inference
+            base_graph[x][x2] = 1 # expert uses previous action for lane inference
             base_graph[l][x2] = 1 # expert cross-checks lane readings with prev action
 
         return nodes, base_graph, conf_graph
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
-        return ['X', 'D', 'L', 'A', 'B', 'W'], ['I', 'Uly', 'Uwy', 'Y']
+        return ['X', 'D', 'L', 'A', 'B', 'W'], ['I', 'U', 'Y']
 
 class HighwayPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''

@@ -294,7 +294,10 @@ class HighwaySCM(SCM):
         env_obs, _, terminated, _, env_info = self._env.step(action)
 
         Y_t = self._reward(X_t, D_t, A_t, B_t, U_t)
-        self._Y.append(Y_t)
+        if len(self._Y) == 0:
+            self._Y = [Y_t]
+        else:
+            self._Y.append(self._Y[-1] + Y_t) # cumulative
 
         self.t += 1
 
@@ -403,9 +406,10 @@ class HighwaySCM(SCM):
             base_graph[l][l2] = 1 # lane dependent on previous lane
             base_graph[x][l2] = 1 # lange change action affects lane
 
-            # trying this out
             base_graph[x][x2] = 1 # expert uses previous action for lane inference
             base_graph[l][x2] = 1 # expert cross-checks lane readings with prev action
+
+            base_graph[y][y2] = 1 # cumulative reward
 
         return nodes, base_graph, conf_graph
 

@@ -134,7 +134,7 @@ class HighwaySCM(SCM):
 
         return conf_lane
 
-    def calc_I(self, D: float) -> int:
+    def calc_I(self) -> int:
         front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
         if front_vehicle is None:
             return 0
@@ -142,7 +142,7 @@ class HighwaySCM(SCM):
         acc = front_vehicle.acceleration(ego_vehicle=front_vehicle)
         is_braking = acc < -1.0 # m/s^2
 
-        if is_braking and D == 1:
+        if is_braking:
             return self.rng.choice(2, p=[0.1, 0.9])
 
         return self.rng.choice(2, p=[0.9, 0.1])
@@ -215,7 +215,7 @@ class HighwaySCM(SCM):
 
         self._U = [self.sample_U()]
         self.D = [self.calc_D()]
-        self._I = [self.calc_I(self.D[self.t])]
+        self._I = [self.calc_I()]
         self.W = [self.calc_W(self._I[self.t], self._U[self.t])]
         self.L = [self.calc_L()]
         self.A = [self.calc_A(self.L[self.t])]
@@ -304,7 +304,7 @@ class HighwaySCM(SCM):
         self._U.append(self.sample_U())
         self.D.append(self.calc_D())
         self.L.append(self.calc_L())
-        self._I.append(self.calc_I(self.D[self.t]))
+        self._I.append(self.calc_I())
         self.A.append(self.calc_A(self.L[self.t]))
         self.B.append(self.calc_B(self.L[self.t]))
         self.W.append(self.calc_W(self._I[self.t], self._U[self.t]))
@@ -378,7 +378,6 @@ class HighwaySCM(SCM):
             d, l, i, a, b, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
             y = n - 1
 
-            base_graph[d][i] = 1 # close distance turns on indicator
             base_graph[d][x] = 1 # action chosen based on distance
             base_graph[d][y] = 1 # reward affected by distance
             base_graph[i][x] = 1 # expert uses indicator to avoid tailgating

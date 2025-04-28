@@ -82,7 +82,7 @@ class HighwaySCM(SCM):
         self.num_lanes = self._env.unwrapped.config['lanes_count']
 
         # covariates
-        self.D = [] # distance to front car
+        self.D = [] # too close to front car
         self.L = [] # current lane index
         self.A = [] # left lane open
         self.B = [] # right lane open
@@ -103,14 +103,14 @@ class HighwaySCM(SCM):
         self.action_space = self._env.action_space # spaces.Discrete(5)
         self.observation_space = spaces.Dict({
             'X': spaces.Sequence(spaces.Discrete(self.action_space.n)),
-            'D': spaces.Sequence(spaces.Box(0.0, np.inf, shape=(), dtype=np.float32)),
+            'D': spaces.Sequence(spaces.Discrete(2)),
             'L': spaces.Sequence(spaces.Discrete(self.num_lanes)),
             'A': spaces.Sequence(spaces.Discrete(2)),
             'B': spaces.Sequence(spaces.Discrete(2)),
             'W': spaces.Sequence(spaces.Discrete(2))
         })
 
-    def calc_D(self) -> float:
+    def calc_D(self) -> int:
         # influence from previous D and X is intrinsic
 
         ego = self._env.unwrapped.vehicle
@@ -119,7 +119,8 @@ class HighwaySCM(SCM):
         if front_vehicle is None:
             return np.inf
 
-        return front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
+        distance = front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
+        return 1 if distance < DANGER_DISTANCE else 0
 
     def calc_L(self) -> int:
         # influence from previous L and X is intrinsic
@@ -140,9 +141,8 @@ class HighwaySCM(SCM):
 
         acc = front_vehicle.acceleration(ego_vehicle=front_vehicle)
         is_braking = acc < -1.0 # m/s^2
-        too_close = D < DANGER_DISTANCE
 
-        if is_braking and too_close:
+        if is_braking and D == 1:
             return self.rng.choice(2, p=[0.1, 0.9])
 
         return self.rng.choice(2, p=[0.9, 0.1])
@@ -228,7 +228,7 @@ class HighwaySCM(SCM):
         info = {'I': self._I, 'U': self._U, 'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, info
 
-    def action(self, X: List[int], D: List[float], L: List[int], I: List[int], A: List[int], B: List[int], W: List[int]) -> ActType:
+    def action(self, X: List[int], D: List[int], L: List[int], I: List[int], A: List[int], B: List[int], W: List[int]) -> ActType:
         # note that W is a red herring and should not be used        
 
         # verify lane reading using history
@@ -245,10 +245,10 @@ class HighwaySCM(SCM):
                 # detected lane reading anomaly
                 drive_carefully = True
 
-        if I[-1] == 1 and D[-1] < DANGER_DISTANCE:
+        if I[-1] == 1 and D == 1:
             return self._actions_reverse['SLOWER']
 
-        if D[-1] < DANGER_DISTANCE:
+        if D[-1] == 1:
             if A[-1]:
                 return self._actions_reverse['LANE_LEFT']
 
@@ -262,17 +262,17 @@ class HighwaySCM(SCM):
     def observation(self):
         return {'X': self.X, 'D': self.D, 'L': self.L, 'A': self.A, 'B': self.B, 'W': self.W}
     
-    def _reward(self, X: int, D: float, A: int, B: int, U: int) -> float:
+    def _reward(self, X: int, D: int, A: int, B: int, U: int) -> float:
         action = self._meta_actions.ACTIONS_ALL[X]
 
         # punish crashes
-        if D < 1.0 or action == 'LANE_LEFT' and not A or action == 'LANE_RIGHT' and not B:
+        if action == 'LANE_LEFT' and not A or action == 'LANE_RIGHT' and not B:
             return -10.0
 
         speed = self._env.unwrapped.vehicle.velocity[0]
 
         # punish accelerating while tailgating
-        if D < DANGER_DISTANCE and action == 'FASTER':
+        if D == 1 and action == 'FASTER':
             return -10.0 * (2.0 if U == 1 else 1.0) # punish more in fog
         
         # half reward if speeding up in fog

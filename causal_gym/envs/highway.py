@@ -297,7 +297,7 @@ class HighwaySCM(SCM):
         if len(self._Y) == 0:
             self._Y = [Y_t]
         else:
-            self._Y.append(self._Y[-1] + Y_t) # cumulative
+            self._Y.append(self._Y[-1] + Y_t) # accumulate
 
         self.t += 1
 
@@ -357,8 +357,8 @@ class HighwaySCM(SCM):
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        variables = ['D', 'L', 'I', 'A', 'B', 'W', 'X', 'Y'] # U's are implicit
-        n = (self.num_steps) * len(variables)
+        variables = ['D', 'L', 'I', 'A', 'B', 'W', 'X'] # U's are implicit, Y added at the end
+        n = (self.num_steps) * len(variables) + 1
 
         nodes = {}
         i = 0
@@ -367,13 +367,16 @@ class HighwaySCM(SCM):
                 nodes[i] = f'{v}{t}'
                 i += 1
 
+        nodes[i] = f'Y{self.num_steps}' # ensures Y comes last in temporal ordering
+
         base_graph = [[0]*n for _ in range(n)]
         conf_graph = [[0]*n for _ in range(n)]
 
         # intra-timestep edges
         for t in range(self.num_steps):
             base = t * len(variables)
-            d, l, i, a, b, w, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
+            d, l, i, a, b, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
+            y = n - 1
 
             base_graph[d][i] = 1 # close distance turns on indicator
             base_graph[d][x] = 1 # action chosen based on distance
@@ -398,8 +401,8 @@ class HighwaySCM(SCM):
             base = t * len(variables)
             base_next = (t + 1) * len(variables)
 
-            d, l, i, a, b, w, x, y = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
-            d2, l2, i2, a2, b2, w2, x2, y2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7
+            d, l, i, a, b, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
+            d2, l2, i2, a2, b2, w2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6
 
             base_graph[d][d2] = 1 # distance affects itself over time
             base_graph[x][d2] = 1 # acceleration/lane changes affect distance
@@ -408,8 +411,6 @@ class HighwaySCM(SCM):
 
             base_graph[x][x2] = 1 # expert uses previous action for lane inference
             base_graph[l][x2] = 1 # expert cross-checks lane readings with prev action
-
-            base_graph[y][y2] = 1 # cumulative reward
 
         return nodes, base_graph, conf_graph
 
@@ -450,7 +451,3 @@ class HighwayPCH(PCH):
 
     def render(self) -> Any:
         return self.env.render()
-
-    def extract(self, obs, node):
-        var, idx = node[0], int(node[1:])
-        return obs[var][idx]

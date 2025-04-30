@@ -142,7 +142,7 @@ class CartPoleWindPCH(PCH):
 
     def __init__(self, **kwargs):
         self.env = CartPoleWindSCM(**kwargs)
-        super().__init__()  # PCH ctor wires env
+        super().__init__(env=self.env)  # Pass the created env to the PCH constructor
 
     # Observational step under behaviour policy
     def see(self):

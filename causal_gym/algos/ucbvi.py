@@ -44,13 +44,14 @@ class UCBVI:
         self.P[s, x_int, a, s_next] = (1 - alpha) * self.P[s, x_int, a, s_next] + alpha
         self.P[s, x_int, a, :] /= self.P[s, x_int, a, :].sum()
 
-    def plan(self):
+    def plan(self, num_sweeps: int | None = None):
+        sweeps = num_sweeps or self.H
         """
         Perform H iterations of backward optimistic value iteration:
         Q = R + bonus + P * V
         V = max_a Q
         """
-        for _ in range(self.H):
+        for _ in range(sweeps):
             # compute optimism bonus
             bonus = self.bonus()  # shape (S, A, A)
             # expected next-value under each (s, x_int, a)

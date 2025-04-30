@@ -5,6 +5,7 @@ from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
 from .frozen_lake import FrozenLakeSCM, FrozenLakePCH
+from .lunar_lander import LunarLanderSCM, LunarLanderPCH
 
 from gymnasium.envs.registration import register
 register(
@@ -61,3 +62,8 @@ register(
     max_episode_steps=100,
 )
 
+register(
+    id="causal_gym/LunarLanderPCH-v0",
+    entry_point="causal_gym.envs:LunarLanderPCH",
+    max_episode_steps=1000,
+)

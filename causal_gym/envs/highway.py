@@ -15,7 +15,7 @@ MERGE_DANGER_DISTANCE = 10.0 # m
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
 
-    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human'):
+    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.05, 0.9, 0.05], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -110,6 +110,11 @@ class HighwaySCM(SCM):
             'W': spaces.Sequence(spaces.Discrete(2))
         })
 
+        self.l_dist = l_dist
+        self.u_prob = u_prob
+        self.i_prob = i_prob
+        self.w_probs = w_probs
+
     def calc_D(self) -> int:
         # influence from previous D and X is intrinsic
 
@@ -128,7 +133,7 @@ class HighwaySCM(SCM):
         true_lane = self._env.unwrapped.vehicle.lane_index[2]
 
         # lane readings aren't always correct
-        conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=[0.1, 0.8, 0.1])
+        conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=self.l_dist)
         if conf_lane < 0  or conf_lane >= self.num_lanes:
             return true_lane
 
@@ -143,9 +148,9 @@ class HighwaySCM(SCM):
         is_braking = acc < -1.0 # m/s^2
 
         if is_braking:
-            return self.rng.choice(2, p=[0.1, 0.9])
+            return self.rng.choice(2, p=[1 - self.i_prob, self.i_prob])
 
-        return self.rng.choice(2, p=[0.9, 0.1])
+        return self.rng.choice(2, p=[self.i_prob, 1 - self.i_prob])
 
     def calc_A(self, L: int) -> int:
         if L == 0:
@@ -193,18 +198,18 @@ class HighwaySCM(SCM):
         # 0 = no warning, 1 = warning on
         if I == 1:
             if U == 1:
-                return self.rng.choice(2, p=[0.1, 0.9]) # brake check and fog
+                return self.rng.choice(2, p=[1 - self.w_probs[0], self.w_probs[0]]) # brake check and fog
 
-            return self.rng.choice(2, p=[0.4, 0.6]) # only brake check
+            return self.rng.choice(2, p=[1 - self.w_probs[1], self.w_probs[1]]) # only brake check
         else:
             if U == 1:
-                return self.rng.choice(2, p=[0.6, 0.4]) # only fog
+                return self.rng.choice(2, p=[1 - self.w_probs[2], self.w_probs[2]]) # only fog
 
-            return self.rng.choice(2, p=[0.9, 0.1]) # no reason for warning
+            return self.rng.choice(2, p=[1 - self.w_probs[3], self.w_probs[3]]) # no reason for warning
 
     def sample_U(self) -> int:
         # 0 = clear vision, 1 = foggy weather
-        return self.rng.choice(2, p=[0.8, 0.2])
+        return self.rng.choice(2, p=[1 - self.u_prob, self.u_prob])
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         self.rng = np.random.default_rng(seed)
@@ -420,9 +425,9 @@ class HighwaySCM(SCM):
 class HighwayPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human'):
+    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.05, 0.9, 0.05], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         # initialize underlying SCM
-        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode)
+        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
         super().__init__()
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
@@ -450,3 +455,10 @@ class HighwayPCH(PCH):
 
     def render(self) -> Any:
         return self.env.render()
+    
+    def close(self) -> None:
+        self.env.close()
+    
+    @property
+    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
+        return self.env.get_graph

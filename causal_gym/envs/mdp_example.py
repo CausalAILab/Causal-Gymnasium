@@ -84,6 +84,11 @@ class MDPExampleSCM(SCM):
         # Return next state, reward, terminated, truncated, info
         return self.s, self.y, False, self.num_step > self._max_step, {}
     
+    def change_policy(self, new_policy):
+        if new_policy != None:
+            self._policy = new_policy
+        return None
+    
 
 class MDPExamplePCH(PCH):
     """PCH for the MDP Example defined above.

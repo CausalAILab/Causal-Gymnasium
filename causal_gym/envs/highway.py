@@ -15,7 +15,7 @@ MERGE_DANGER_DISTANCE = 10.0 # m
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
 
-    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.05, 0.9, 0.05], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.15, 0.7, 0.15], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -127,17 +127,19 @@ class HighwaySCM(SCM):
         distance = front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
         return 1 if distance < DANGER_DISTANCE else 0
 
-    def calc_L(self) -> int:
+    def calc_L(self, U) -> int:
         # influence from previous L and X is intrinsic
-
         true_lane = self._env.unwrapped.vehicle.lane_index[2]
 
-        # lane readings aren't always correct
-        conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=self.l_dist)
-        if conf_lane < 0  or conf_lane >= self.num_lanes:
-            return true_lane
+        # fog leads to noisy lane reading
+        if U == 1:
+            conf_lane = self.rng.choice([true_lane - 1, true_lane, true_lane + 1], p=self.l_dist)
+            if conf_lane < 0  or conf_lane >= self.num_lanes:
+                return true_lane
 
-        return conf_lane
+            return conf_lane
+
+        return true_lane
 
     def calc_I(self) -> int:
         front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
@@ -222,7 +224,7 @@ class HighwaySCM(SCM):
         self.D = [self.calc_D()]
         self._I = [self.calc_I()]
         self.W = [self.calc_W(self._I[self.t], self._U[self.t])]
-        self.L = [self.calc_L()]
+        self.L = [self.calc_L(self._U[self.t])]
         self.A = [self.calc_A(self.L[self.t])]
         self.B = [self.calc_B(self.L[self.t])]
 
@@ -236,7 +238,7 @@ class HighwaySCM(SCM):
     def action(self, X: List[int], D: List[int], L: List[int], I: List[int], A: List[int], B: List[int], W: List[int]) -> ActType:
         # note that W is a red herring and should not be used        
 
-        # verify lane reading using history
+        # verify lane reading using history to detect fog
         drive_carefully = False
         if len(X) >= 1 and len(L) >= 2:
             last_lane_reading = L[-2]
@@ -247,7 +249,7 @@ class HighwaySCM(SCM):
                 last_lane_reading -= 1
 
             if last_lane_reading != L[-1]:
-                # detected lane reading anomaly
+                # detected lane reading anomaly, probably fog
                 drive_carefully = True
 
         if I[-1] == 1 and D == 1:
@@ -308,7 +310,7 @@ class HighwaySCM(SCM):
 
         self._U.append(self.sample_U())
         self.D.append(self.calc_D())
-        self.L.append(self.calc_L())
+        self.L.append(self.calc_L(self._U[self.t]))
         self._I.append(self.calc_I())
         self.A.append(self.calc_A(self.L[self.t]))
         self.B.append(self.calc_B(self.L[self.t]))
@@ -399,6 +401,10 @@ class HighwaySCM(SCM):
             # fog confounds lane reading and reward func
             conf_graph[w][y] = 1
             conf_graph[y][w] = 1
+            conf_graph[l][y] = 1
+            conf_graph[y][l] = 1
+            conf_graph[l][w] = 1
+            conf_graph[w][l] = 1
 
         # inter-timstep edges
         for t in range(self.num_steps - 1):
@@ -425,7 +431,7 @@ class HighwaySCM(SCM):
 class HighwayPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.05, 0.9, 0.05], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.15, 0.7, 0.15], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         # initialize underlying SCM
         self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
         super().__init__()

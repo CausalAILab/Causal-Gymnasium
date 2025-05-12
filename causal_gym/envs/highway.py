@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from typing import Any, Tuple, Dict, List
 import pygame
 
@@ -15,7 +16,7 @@ MERGE_DANGER_DISTANCE = 10.0 # m
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
 
-    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.15, 0.7, 0.15], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -64,13 +65,58 @@ class HighwaySCM(SCM):
                     fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
                     screen.blit(fog_surf, (0, 0))
 
+                    if getattr(self, 'L', []) and len(self.L) > 0:
+                        perceived = self.L[-1]
+                        true_lane = ego.lane_index[2]
+
+                        if perceived != true_lane:
+                            net = viewer.env.unwrapped.road.network
+                            lane_geom = net.get_lane(ego.lane_index)
+                            lane_w = lane_geom.width
+
+                            y_true = ego.position[1]
+                            y_ghost = y_true + (perceived - true_lane) * lane_w
+
+                            x_pix, y_pix = viewer.sim_surface.pos2pix(ego.position[0], y_ghost)
+
+                            car = viewer.env.vehicle
+                            half_w = viewer.sim_surface.pix(car.LENGTH / 2)
+                            half_h = viewer.sim_surface.pix(car.WIDTH / 2)
+
+                            surf = pygame.Surface((2*half_w, 2*half_h), pygame.SRCALPHA)
+                            surf.fill((0, 255, 0, 80))
+
+                            angle_deg = -np.degrees(ego.heading)
+                            rotated = pygame.transform.rotate(surf, angle_deg)
+
+                            rect = rotated.get_rect(center=(x_pix, y_pix))
+
+                            # 1) make a copy for the outline, scale it up by 10%
+                            outline = pygame.transform.rotozoom(rotated, 0, 1.1)
+                            outline_rect = outline.get_rect(center=rect.center)
+
+                            # draw the outline in solid-ish green
+                            outline.set_alpha(100)  
+                            screen.blit(outline, outline_rect.topleft)
+
+                            ticks = pygame.time.get_ticks() / 1000 
+                            alpha = 50 + 20 * math.sin(2*math.pi * 0.5 * ticks) 
+                            rotated.set_alpha(int(alpha))
+
+                            # blit the fill on top
+                            screen.blit(rotated, rect.topleft)
+
+                            w, h = rotated.get_size()
+                            small = pygame.transform.smoothscale(rotated, (w//2, h//2))
+                            blur = pygame.transform.smoothscale(small, (w, h))
+                            blur.set_alpha(40)
+                            screen.blit(blur, rect.topleft)
+
                 if getattr(self, 'W', []) and self.W[-1] == 1:
                     x, y = viewer.sim_surface.pos2pix(ego.position[0], ego.position[1])
                     r = 4.5
                     rect = pygame.Rect(int(x + 2*r), int(y - r), int(r), int(2*r))
                     pygame.draw.rect(screen, (255, 200, 0), rect)
-
-                # keep Uwy hidden for now
 
                 pygame.display.flip()
 
@@ -256,11 +302,12 @@ class HighwaySCM(SCM):
             return self._actions_reverse['SLOWER']
 
         if D[-1] == 1:
-            if A[-1]:
-                return self._actions_reverse['LANE_LEFT']
+            if not drive_carefully:
+                if A[-1]:
+                    return self._actions_reverse['LANE_LEFT']
 
-            if B[-1]:
-                return self._actions_reverse['LANE_RIGHT']
+                if B[-1]:
+                    return self._actions_reverse['LANE_RIGHT']
 
             return self._actions_reverse['SLOWER']
 
@@ -350,13 +397,58 @@ class HighwaySCM(SCM):
                 fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
                 screen.blit(fog_surf, (0, 0))
 
+                if getattr(self, 'L', []) and len(self.L) > 0:
+                    perceived = self.L[-1]
+                    true_lane = ego.lane_index[2]
+
+                    if perceived != true_lane:
+                        net = viewer.env.unwrapped.road.network
+                        lane_geom = net.get_lane(ego.lane_index)
+                        lane_w = lane_geom.width
+
+                        y_true = ego.position[1]
+                        y_ghost = y_true + (perceived - true_lane) * lane_w
+
+                        x_pix, y_pix = viewer.sim_surface.pos2pix(ego.position[0], y_ghost)
+
+                        car = viewer.env.vehicle
+                        half_w = viewer.sim_surface.pix(car.LENGTH / 2)
+                        half_h = viewer.sim_surface.pix(car.WIDTH / 2)
+
+                        surf = pygame.Surface((2*half_w, 2*half_h), pygame.SRCALPHA)
+                        surf.fill((0, 255, 0, 80))
+
+                        angle_deg = -np.degrees(ego.heading)
+                        rotated = pygame.transform.rotate(surf, angle_deg)
+
+                        rect = rotated.get_rect(center=(x_pix, y_pix))
+
+                        # 1) make a copy for the outline, scale it up by 10%
+                        outline = pygame.transform.rotozoom(rotated, 0, 1.1)
+                        outline_rect = outline.get_rect(center=rect.center)
+
+                        # draw the outline in solid-ish green
+                        outline.set_alpha(100)  
+                        screen.blit(outline, outline_rect.topleft)
+
+                        ticks = pygame.time.get_ticks() / 1000 
+                        alpha = 50 + 20 * math.sin(2*math.pi * 0.5 * ticks) 
+                        rotated.set_alpha(int(alpha))
+
+                        # blit the fill on top
+                        screen.blit(rotated, rect.topleft)
+
+                        w, h = rotated.get_size()
+                        small = pygame.transform.smoothscale(rotated, (w//2, h//2))
+                        blur = pygame.transform.smoothscale(small, (w, h))
+                        blur.set_alpha(40)
+                        screen.blit(blur, rect.topleft)
+
             if getattr(self, 'W', []) and self.W[-1] == 1:
                 x, y = viewer.sim_surface.pos2pix(ego.position[0], ego.position[1])
                 r = 4.5
                 rect = pygame.Rect(int(x + 2*r), int(y - r), int(r), int(2*r))
                 pygame.draw.rect(screen, (255, 200, 0), rect)
-
-            # keep Uwy hidden for now
 
             pygame.display.flip()
 

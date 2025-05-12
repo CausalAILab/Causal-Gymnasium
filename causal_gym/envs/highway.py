@@ -16,7 +16,7 @@ MERGE_DANGER_DISTANCE = 10.0 # m
 class HighwaySCM(SCM):
     ''' Causal environment for the single step highway driving scenario.'''
 
-    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -27,6 +27,8 @@ class HighwaySCM(SCM):
 
         # configurations for highway environment
         self.config = config or {}
+        
+        self.perception = perception # which GUI elements to show
 
         # internal env
         self._env = gym.make('highway-v0', config=self.config, render_mode=render_mode)
@@ -46,24 +48,25 @@ class HighwaySCM(SCM):
 
                 ego = viewer.env.vehicle
                 front = viewer.env.road.neighbour_vehicles(ego)[0]
-                if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
+                if self.perception != 'imitator' and front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
                     x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
                     r = 4.5
                     rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
                     pygame.draw.rect(screen, (255, 100, 0), rect)
 
                 if getattr(self, '_U', []) and self._U[-1] == 1:
-                    w, h = screen.get_size()
-                    alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
-                    alpha = np.clip(alpha, 0, 255).astype(np.uint8)
+                    if self.perception == 'truth':
+                        w, h = screen.get_size()
+                        alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
+                        alpha = np.clip(alpha, 0, 255).astype(np.uint8)
 
-                    fog = np.empty((h, w, 4), dtype=np.uint8)
-                    fog[..., :3] = 200
-                    fog[...,  3] = alpha
+                        fog = np.empty((h, w, 4), dtype=np.uint8)
+                        fog[..., :3] = 200
+                        fog[...,  3] = alpha
 
-                    buf = fog.tobytes()
-                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
-                    screen.blit(fog_surf, (0, 0))
+                        buf = fog.tobytes()
+                        fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
+                        screen.blit(fog_surf, (0, 0))
 
                     if getattr(self, 'L', []) and len(self.L) > 0:
                         perceived = self.L[-1]
@@ -378,24 +381,25 @@ class HighwaySCM(SCM):
 
             ego = viewer.env.vehicle
             front = viewer.env.road.neighbour_vehicles(ego)[0]
-            if front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
+            if self.perception != 'imitator' and front is not None and getattr(self, '_I', []) and self._I[-1] == 1:
                 x, y = viewer.sim_surface.pos2pix(front.position[0], front.position[1])
                 r = 4.5
                 rect = pygame.Rect(int(x - 3*r), int(y - r), int(r), int(2*r))
                 pygame.draw.rect(screen, (255, 100, 0), rect)
 
             if getattr(self, '_U', []) and self._U[-1] == 1:
-                w, h = screen.get_size()
-                alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
-                alpha = np.clip(alpha, 0, 255).astype(np.uint8)
+                if self.perception == 'truth':
+                    w, h = screen.get_size()
+                    alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
+                    alpha = np.clip(alpha, 0, 255).astype(np.uint8)
 
-                fog = np.empty((h, w, 4), dtype=np.uint8)
-                fog[..., :3] = 200
-                fog[...,  3] = alpha
+                    fog = np.empty((h, w, 4), dtype=np.uint8)
+                    fog[..., :3] = 200
+                    fog[...,  3] = alpha
 
-                buf = fog.tobytes()
-                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
-                screen.blit(fog_surf, (0, 0))
+                    buf = fog.tobytes()
+                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
+                    screen.blit(fog_surf, (0, 0))
 
                 if getattr(self, 'L', []) and len(self.L) > 0:
                     perceived = self.L[-1]
@@ -521,11 +525,18 @@ class HighwaySCM(SCM):
         return ['X', 'D', 'L', 'A', 'B', 'W'], ['I', 'U', 'Y']
 
 class HighwayPCH(PCH):
-    '''PCH wrapper for the HighwaySCM env'''
+    '''
+    PCH wrapper for the HighwaySCM env.
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', l_dist: List[float] = [0.15, 0.7, 0.15], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    perception:
+        1. 'truth' = show everything
+        2. 'expert' = hide fog
+        3. 'imitator' = hide fog and indicator
+    '''
+
+    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         # initialize underlying SCM
-        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
+        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
         super().__init__()
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:

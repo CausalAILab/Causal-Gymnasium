@@ -225,9 +225,9 @@ class ExtendedWindyGridSCM(WindyMiniGridSCM):
         # 2: Forward
         # 3: Stay (do nothing)
         mapping = {
-            0: Actions.left,
-            1: Actions.right,
-            2: Actions.forward,
+            0: Actions.right,
+            1: Actions.forward,
+            2: Actions.left,
             3: Actions.done
         }
         

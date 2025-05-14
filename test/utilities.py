@@ -5,6 +5,7 @@ from tqdm import tqdm
 import numpy as np
 import multiprocess as mp
 import pandas as pd
+import matplotlib.pyplot as plt
 
 def run_episode(policy=None, seed=None, GAMMA=0.9, MAX_STEPS=10000, env=None):
     #Run a single episode in the MDP environment.
@@ -314,3 +315,190 @@ def match_state_policy(state):
 
 def opposite_state_policy(state):
     return 1 - state
+
+#############################################################
+# The below is for the extended windy grid environment test
+#############################################################
+
+# run one pass of the environment with the ext_windy_lavagrid pch class
+def run_one_pass(ext_windy_lavagrid, behavior_policy1, behavior_policy2, SEED):
+    # Reset for demonstration
+    observation, info = ext_windy_lavagrid.reset(seed=SEED)
+    print(f"Initial position: {ext_windy_lavagrid.env.agent_pos}")
+    print(f"Initial wind: {info['wind']}")
+    print(f"DTR stage: {ext_windy_lavagrid.env.decision_model.stage}")
+    print(f"S1 (derived from position): {ext_windy_lavagrid.env._map_grid_to_dtr_s1()}")
+    init_obs = ext_windy_lavagrid.render()
+
+    # First step - use 'see' with our first behavioral policy
+    action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy1)
+    print(f"\nStep 1:")
+    print(f"Action taken: {action}")
+    print(f"New position: {ext_windy_lavagrid.env.agent_pos}")
+    print(f"Wind direction: {info['wind']}")
+    print(f"DTR stage: {ext_windy_lavagrid.env.decision_model.stage}")
+    print(f"S2 (derived from position): {ext_windy_lavagrid.env._map_grid_to_dtr_s2()}")
+    print(f"Reward: {reward}")
+    step1_obs = ext_windy_lavagrid.render()
+
+    # Second step - use 'see' with our second behavioral policy
+    action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy2)
+    print(f"\nStep 2:")
+    print(f"Action taken: {action}")
+    print(f"New position: {ext_windy_lavagrid.env.agent_pos}")
+    print(f"Wind direction: {info['wind']}")
+    print(f"DTR stage: {ext_windy_lavagrid.env.decision_model.stage}")
+    print(f"DTR complete: {ext_windy_lavagrid.env.dtr_complete}")
+    print(f"Reward: {reward}")
+    step2_obs = ext_windy_lavagrid.render()
+
+    # Now DTR is complete, we must reset to start a new episode
+    print("\nResetting DTR model for new episode (keeping grid position)...")
+    # Keep track of current grid position
+    current_pos = ext_windy_lavagrid.env.agent_pos
+    current_dir = ext_windy_lavagrid.env.agent_dir
+    current_wind = ext_windy_lavagrid.env.wind_dir
+
+    # Reset just the DTR model to start a new episode
+    ext_windy_lavagrid.env.decision_model.reset()
+    ext_windy_lavagrid.env.dtr_complete = False
+    ext_windy_lavagrid.env.dtr_episode_reward = 0.0
+    print(f"New DTR stage after reset: {ext_windy_lavagrid.env.decision_model.stage}")
+
+    # Third step - start of new DTR episode
+    action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy1)
+    print(f"\nStep 3 (First step of new DTR episode):")
+    print(f"Action taken: {action}")
+    print(f"New position: {ext_windy_lavagrid.env.agent_pos}")
+    print(f"Wind direction: {info['wind']}")
+    print(f"DTR stage: {ext_windy_lavagrid.env.decision_model.stage}")
+    print(f"Reward: {reward}")
+    step3_obs = ext_windy_lavagrid.render()
+
+    # Fourth step
+    action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy2)
+    print(f"\nStep 4 (Second step of new DTR episode):")
+    print(f"Action taken: {action}")
+    print(f"New position: {ext_windy_lavagrid.env.agent_pos}")
+    print(f"Wind direction: {info['wind']}")
+    print(f"DTR stage: {ext_windy_lavagrid.env.decision_model.stage}")
+    print(f"DTR complete: {ext_windy_lavagrid.env.dtr_complete}")
+    print(f"Reward: {reward}")
+    step4_obs = ext_windy_lavagrid.render()
+    # Visualize the steps
+    fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+    axes[0].imshow(init_obs)
+    axes[0].axis('off')
+    axes[0].set_title('Initial State (S1)')
+    axes[1].imshow(step1_obs)
+    axes[1].axis('off')
+    axes[1].set_title('After First Step (S2)')
+    axes[2].imshow(step2_obs)
+    axes[2].axis('off')
+    axes[2].set_title('After Second Step (DTR Complete)')
+    axes[3].imshow(step4_obs)
+    axes[3].axis('off')
+    axes[3].set_title('After Fourth Step (New DTR Episode)')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def run_multiple_passes_extended_windy_mingrid(num_passes, Goal, ext_windy_lavagrid, behavior_policy1, behavior_policy2, SEED):
+    # Run 100 passes and collect data
+    results = []
+
+    for pass_idx in range(num_passes):
+        # Reset environment for new pass
+        observation, info = ext_windy_lavagrid.reset(seed=SEED + pass_idx)
+        
+        # Initialize tracking variables for this pass
+        pass_rewards = 0.0
+        steps_taken = 0
+        dtr_episodes_completed = 0
+        grid_goals_reached = 0
+        
+        # Continue until terminated or max steps reached
+        terminated = False
+        truncated = False
+        
+        while not (terminated or truncated) and steps_taken < 30:  # 30 steps max per pass
+            # Check if we need to reset DTR
+            if ext_windy_lavagrid.env.dtr_complete:
+                # Reset just the DTR model
+                ext_windy_lavagrid.env.decision_model.reset()
+                ext_windy_lavagrid.env.dtr_complete = False
+                ext_windy_lavagrid.env.dtr_episode_reward = 0.0
+                dtr_episodes_completed += 1
+            
+            # Choose appropriate policy based on DTR stage
+            if ext_windy_lavagrid.env.decision_model.stage == 0:
+                # First stage of DTR
+                action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy1)
+            else:
+                # Second stage of DTR
+                action, next_state, reward, terminated, truncated, info = ext_windy_lavagrid.see(bpolicy=behavior_policy2)
+            
+            # Update tracking
+            pass_rewards += reward
+            steps_taken += 1
+            
+            # Check if grid goal reached
+            if terminated and isinstance(ext_windy_lavagrid.env.grid.get(*ext_windy_lavagrid.env.agent_pos), Goal):
+                grid_goals_reached += 1
+        
+        # If DTR was complete at end, count it
+        if ext_windy_lavagrid.env.dtr_complete:
+            dtr_episodes_completed += 1
+        
+        # Store results for this pass
+        results.append({
+            'pass_idx': pass_idx,
+            'total_reward': pass_rewards,
+            'steps_taken': steps_taken,
+            'dtr_episodes_completed': dtr_episodes_completed,
+            'grid_goals_reached': grid_goals_reached
+        })
+    
+    return results
+
+def behavior_policy1(ext_windy_lavagrid, state, wind, EXPLORATION_RATE=0.2):
+    """First stage policy with exploration (S1 -> X1)"""
+    s1 = ext_windy_lavagrid.env._map_grid_to_dtr_s1()
+    # Base policy: Forward if S1=1
+    base_action = 1 if s1 == 0 else 2
+    # With probability EXPLORATION_RATE, take a random action
+    if np.random.random() < EXPLORATION_RATE:
+        # Choose randomly from available actions: 0=right, 1=forward, 2=left, 3=Stay
+        action = np.random.choice([0, 1, 2, 3])
+    else:
+        action = base_action
+    return ext_windy_lavagrid.env._map_decision_to_grid_action(action)
+
+def behavior_policy2(ext_windy_lavagrid, state, wind, EXPLORATION_RATE=0.2):
+    """Second stage policy with exploration (S1, X1, S2 -> X2)"""
+    s2 = ext_windy_lavagrid.env._map_grid_to_dtr_s2()
+    # Base policy: Right if S2=1
+    base_action = 0 if s2 == 0 else 3 
+    # With probability EXPLORATION_RATE, take a random action
+    if np.random.random() < EXPLORATION_RATE:
+        # Choose randomly from available actions: 0=right, 1=forward, 2=left, 3=Stay
+        action = np.random.choice([0, 1, 2, 3])
+    else:
+        action = base_action
+    return ext_windy_lavagrid.env._map_decision_to_grid_action(action)
+
+# Let's also create alternative policies that are different but reasonable
+def alternative_policy1(ext_windy_lavagrid, EXPLORATION_RATE,  state, wind):
+    """Alternative policy 1: Prefers different actions than base policy"""
+    s1 = ext_windy_lavagrid.env._map_grid_to_dtr_s1()
+    # Opposite preferences: Forward if S1=0, Right if S1=1
+    action = 2 if s1 == 0 else 1
+    return ext_windy_lavagrid.env._map_decision_to_grid_action(action)
+
+def alternative_policy2(ext_windy_lavagrid, state, wind):
+    """Alternative policy 2: Prefers different actions than base policy"""
+    s2 = ext_windy_lavagrid.env._map_grid_to_dtr_s2()
+    # Opposite preferences: Stay if S2=0, Left if S2=1
+    action = 3 if s2 == 0 else 0
+    return ext_windy_lavagrid.env._map_decision_to_grid_action(action)

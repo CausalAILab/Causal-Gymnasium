@@ -14,7 +14,7 @@ DANGER_DISTANCE = 20.0 # m
 MERGE_DANGER_DISTANCE = 10.0 # m
 
 class HighwaySCM(SCM):
-    ''' Causal environment for the single step highway driving scenario.'''
+    ''' Causal environment for the sequential highway driving scenario.'''
 
     def __init__(self, num_steps: int, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         super().__init__()
@@ -457,6 +457,9 @@ class HighwaySCM(SCM):
             pygame.display.flip()
 
         return frame
+    
+    def close(self):
+        self._env.close()
 
     @property
     def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:

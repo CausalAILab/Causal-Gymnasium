@@ -7,6 +7,7 @@ from .wind_dist import WIND_DIST
 from .mnist import MNISTSCM, MNISTPCH
 from .highway_single_step import HighwaySingleStepSCM, HighwaySingleStepPCH
 from .highway import HighwaySCM, HighwayPCH
+from .race import RaceSCM, RacePCH
 
 from gymnasium.envs.registration import register
 register(

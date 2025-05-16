@@ -23,27 +23,17 @@ class PCH(
         - :meth:`see` - Updates an environment following the behavior policy returning the realized action, the next agent observation, the reward for taking that actions,
         - :meth:`do` - Updates an environment with actions returning the next agent observation, the reward for taking that actions.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """Wraps an environment to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
         Args:
-            args[0] or kwargs['env']: The environment to wrap
+            env: The environment to wrap
         """
-        # Extract env from kwargs or args
-        env = kwargs.pop('env', None)
-        if env is None:
-            if len(args) >= 1:
-                env = args[0]
-            else:
-                raise ValueError("PCH requires an 'env' argument")
-        # Set the wrapped environment
-        self.env = env
-        # Ensure env.unwrapped is either an SCM or a Gym Env
-        from gymnasium import Env as GymEnv
-        assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, GymEnv)
-        # Initialize the Gym Wrapper base class with the environment
-        super().__init__(self.env)
-        # Placeholder for optional wrapper policy
+        self.env: SCM
+
+        assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, Env)
+        Wrapper.__init__(self, self.env)
+
         self._policy: WrapperPolicyType | None = None
 
 

@@ -9,10 +9,12 @@ This directory (`causalgym/test/`) serves as the primary location for all test s
     *   Visualization and rendering checks.
     *   Simple agent behavior demonstrations.
     *   Tests for specific causal mechanisms or interventions in the environments (e.g., `test_frozenlake.py`, `test_cartpole.ipynb`).
+    *   `cartpole_visual_test.ipynb`: A notebook for visually inspecting the behavior of the `CartPoleWindPCH` environment under different wind conditions (no wind, default wind, heavy wind) and initial pole angle offsets. It helps verify the environment's dynamics and rendering.
+    *   `test_lunar_lander.ipynb`: This notebook provides visual tests for the `LunarLanderSCM` environment, specifically focusing on the effects of different wind conditions (no wind, positive wind, negative wind, moderate wind) on the lander's trajectory and landing success. It includes helper functions for running episodes and displaying rendered frames as animations.
 
 *   **`learning/` subdirectory**: This subdirectory is dedicated to more formal reinforcement learning experiments.
-    *   It contains scripts for training and evaluating learning agents (like `UCBVI`) on the custom CausalGym environments.
-    *   For detailed information on the scripts, setup, and experiments within this subdirectory, please refer to its specific README: [`./learning/README.md`](./learning/README.md).
+    *   It contains scripts for training and evaluating learning agents (like `UCBVI` and `UCBQ`) on various custom CausalGym environments. Key scripts include `train_lander_ucbvi.py`, `train_cartpole_ucbvi.py`, and `test_frozenlake_ucbvi.py`.
+    *   For detailed information on these scripts, their setup, command-line arguments, and specific experiments, please refer to the dedicated README within this subdirectory: [`./learning/README.md`](./learning/README.md).
 
 *   **`logs/` subdirectory**: May contain log files generated during test runs or experiments.
 

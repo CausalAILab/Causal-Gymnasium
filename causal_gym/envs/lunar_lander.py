@@ -81,9 +81,8 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
             # observation after force (approx) – we leave obs unchanged; stochasticity
             # is captured in the physics engine itself.
 
-        done = terminated or truncated
         self._last_obs = obs.astype(np.float32) # Store observation after step
-        return self._last_obs, float(reward), bool(done), info
+        return self._last_obs, float(reward), terminated, truncated, info # Return 5 values
 
     # Convenience helpers -----------------------------------------------
     def action(self):
@@ -127,8 +126,8 @@ class LunarLanderPCH(PCH):
     """PCH wrapper exposing (see) and (do) for LunarLanderSCM."""
 
     def __init__(self, **kwargs):
-        scm = LunarLanderSCM(**kwargs)
-        super().__init__(env=scm)
+        self.env = LunarLanderSCM(**kwargs)  # Create SCM and assign to self.env
+        super().__init__(env=self.env)       # Call PCH.__init__, passing self.env as a kwarg
 
     # ------------------------------------------------------------------
     #  Layer‑1 observational regime – SEE
@@ -142,5 +141,5 @@ class LunarLanderPCH(PCH):
     #  Layer‑2 interventional regime – DO
     # ------------------------------------------------------------------
     def do(self, a: int):
-        obs, r, done, info = self.env.step(a)
-        return obs, r, done, info
+        obs, r, terminated, truncated, info = self.env.step(a)
+        return obs, r, terminated, truncated, info # Return 5 values

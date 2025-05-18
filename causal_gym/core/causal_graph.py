@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union, O
 from typing import Set, FrozenSet, Dict, Sequence, AbstractSet
 
 
+import matplotlib.pyplot as plt
+import networkx as nx
+from networkx.drawing.nx_agraph import graphviz_layout
+from matplotlib.patches import FancyArrowPatch
+import numpy as np
+
 import itertools
 from itertools import product, chain
 from collections import defaultdict
@@ -367,61 +373,156 @@ class CausalGraph:
             self.__h = hash(sortup(self.V)) ^ hash(sortup(self.edges)) ^ hash(sortup2(self.confounded_dict.values()))
         return self.__h
     
-    def nx_viz(self, path="./cdag.png", node_color_map: Optional[Dict[str, Set[str]]] = None, pos = None, labels = None):
-        # Creates a better-arranged NX image with optional colored node groups
-        import matplotlib.pyplot as plt
+    def nx_viz(
+        self,
+        path: str = "./cdag.png",
+        node_color_map: Optional[Dict[str, Set[str]]] = None,
+        pos: Optional[Dict[str, Tuple[float, float]]] = None,
+        labels: Optional[Dict[str, str]] = None,
+        *,
+        # --- New parameters for MUCT ring ------------------------------------------------
+        muct_nodes: Optional[Set[str]] = None,
+        ring_color: str = "lightsteelblue",  # light blue ring colour
+        ring_scale: float = 1.35,             # how much larger than the base node the ring is
+        ring_width: float = 6.0,              # thickness of the ring in points
+        node_size: int = 300  # Default node size
+    ):
+        """
+        Creates a better-arranged NX image with optional colored node groups.
+        MUCT ring parameters are experimental and may change.
 
+        Parameters
+        ----------
+        path : str
+            Output path for the saved figure.
+        node_color_map : Dict[str, Set[str]], optional
+            Mapping from *fill colour* → nodes to be filled with that colour.
+        pos : Dict[str, Tuple[float, float]], optional
+            Fixed positions for the nodes (passed directly to NetworkX).
+        labels : Dict[str, str], optional
+            Custom labels for nodes. Falls back to the node names.
+        muct_nodes : Set[str], optional (new)
+            Nodes to highlight with a light‑blue outer ring.  If ``None`` the function
+            attempts a best‑effort guess using ``node_color_map`` (looks for any colour
+            containing the substring *"lightblue"*).
+        ring_color / ring_scale / ring_width
+            Appearance controls for the ring.
+        node_size : int, optional
+            Default node size for drawing.
+        """
+        # ------------------------------------------------------------------
+        # Build NetworkX graph ---------------------------------------------------------
         self.__ensure_confoundeds_cached()
         G = nx.DiGraph()
         G.add_nodes_from(self.V)
         G.add_edges_from(self.edges)
 
-        # Improved layout
+        # Layout ----------------------------------------------------------------------
         if pos is None:
-            pos = nx.kamada_kawai_layout(G)
+            try:
+                pos = graphviz_layout(G, prog="dot")
+            except Exception:  # fall back to spring layout if GraphViz not available
+                pos = nx.spring_layout(G, seed=42)
 
-        # Setup color mapping
-        default_color = "lightblue"
+        # ------------------------------------------------------------------
+        # Colour map handling ----------------------------------------------------------
+        default_color = "white"
         node_colors = {node: default_color for node in self.V}
         if node_color_map:
-            for color, nodes in node_color_map.items():
+            for colour, nodes in node_color_map.items():
                 for node in nodes:
                     if node in node_colors:
-                        node_colors[node] = color
+                        node_colors[node] = colour
         node_color_list = [node_colors[node] for node in G.nodes]
 
-        plt.figure(figsize=(10, 8))
-        nx.draw_networkx_nodes(G, pos, node_color=node_color_list, node_size=500)
-        nx.draw_networkx_labels(G, pos, labels=labels, font_size=10)
-        nx.draw_networkx_edges(G, pos, edgelist=self.edges, arrowstyle='->', arrowsize=20)
+        # ------------------------------------------------------------------
+        # Attempt to infer MUCT nodes automatically if not provided --------------------
+        if muct_nodes is None and node_color_map:
+            for colour_key, nodes in node_color_map.items():
+                if "lightblue" in colour_key.lower():
+                    muct_nodes = set(nodes)
+                    break
+        if muct_nodes is None:
+            muct_nodes = set()
 
-        # Draw bidirected (confounding) edges
+        # ------------------------------------------------------------------
+        # Plot -------------------------------------------------------------------------
+        fig, ax = plt.subplots(figsize=(12, 8), dpi=300)
+
+        # Draw nodes (base)
+        nx.draw_networkx_nodes(
+            G,
+            pos,
+            node_color=node_color_list,
+            node_size=node_size,
+            edgecolors="black",
+            linewidths=1.5,
+            ax=ax,
+        )
+
+        # Draw labels
+        nx.draw_networkx_labels(
+            G,
+            pos,
+            labels=labels,
+            font_size=12,
+            font_weight="bold",
+            ax=ax,
+        )
+
+        # Draw directed edges
+        nx.draw_networkx_edges(
+            G,
+            pos,
+            edgelist=self.edges,
+            arrowstyle="-|>",
+            arrowsize=20,
+            edge_color="black",
+            node_size=node_size,
+            ax=ax,
+        )
+
+        # Draw bidirected (confounding) edges -----------------------------------------
         for u, (x, y) in self.confounded_dict.items():
             if x in pos and y in pos:
-                if (x, y) in self.edges or (y, x) in self.edges:
-                    nx.draw_networkx_edges(
-                        G,
-                        pos,
-                        edgelist=[(x, y)],
-                        style="dashed",
-                        connectionstyle="arc3,rad=0.2",
-                        edge_color="k",
-                        width=1
-                    )
-                else:
-                    plt.plot(
-                        [pos[x][0], pos[y][0]],
-                        [pos[x][1], pos[y][1]],
-                        "k--",
-                        linewidth=1
-                    )
+                dx, dy = pos[y][0] - pos[x][0], pos[y][1] - pos[x][1]
+                dist = np.hypot(dx, dy)
+                if dist == 0:
+                    continue
+                start = (pos[x][0] + 0.0 * dx, pos[x][1] + 0.0 * dy)
+                end = (pos[y][0] - 0.0 * dx, pos[y][1] - 0.0 * dy)
+                arrow = FancyArrowPatch(
+                    start,
+                    end,
+                    arrowstyle="-",
+                    linestyle=(0, (5, 10)),
+                    color="gray",
+                    connectionstyle="arc3,rad=0.2",
+                    linewidth=1.5,
+                )
+                ax.add_patch(arrow)
 
+        # ------------------------------------------------------------------
+        # *NEW*   Draw light‑blue ring around MUCT nodes -------------------------------
+        if muct_nodes:
+            overlay_node_size = node_size * ring_scale
+            nx.draw_networkx_nodes(
+                G,
+                pos,
+                nodelist=list(muct_nodes),
+                node_color="none",           # transparent fill
+                node_size=overlay_node_size, # larger size → outer ring
+                edgecolors=ring_color,
+                linewidths=ring_width,
+                ax=ax,
+            )
+
+        # Final touches ----------------------------------------------------------------
         plt.axis("off")
         plt.tight_layout()
-        plt.savefig(path)
-        # print('Hello World')
-        return (plt, G)
-        # plt.close()
+        plt.savefig(path, dpi=300)
+        plt.close(fig)
+        return (fig, G)
 
 
         

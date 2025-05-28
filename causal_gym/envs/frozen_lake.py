@@ -2,25 +2,10 @@
 import gymnasium as gym
 import numpy as np
 import pygame
-import os
 
-# Attempt relative imports for normal package use
-try:
-    from ..core import SCM, PCH
-    from ..core.types import PolicyType, ObsType, ActType
-except ImportError:
-    # Fallback for direct script execution
-    import sys
-    # Construct the absolute path to the 'causal2' directory (or project root)
-    # Assuming this script is in 'causal2/causalgym/causal_gym/envs/'
-    # Path needs to go up three levels to reach 'causal2'
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-    # Now attempt the import again, this time it should work if causalgym is in project_root
-    from causal_gym.core import SCM, PCH
-    from causal_gym.core.types import PolicyType, ObsType, ActType
+from typing import Union
+from ..core import SCM, PCH
+from ..core.types import PolicyType, ObsType, ActType
 
 
 # Define some colors for rendering (RGB)
@@ -44,12 +29,15 @@ WIND_DIRECTIONS = [WIND_NONE, WIND_NORTH, WIND_EAST, WIND_SOUTH, WIND_WEST]
 class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 4}
 
-    def __init__(self,
-                 seed: int = 0,
-                 map_name: str = "4x4",
-                 is_slippery: bool = True,
-                 wind_probabilities: tuple[float, float, float, float, float] = (0.7, 0.075, 0.075, 0.075, 0.075), # WIND_NONE, N, E, S, W
-                 render_mode: str | None = None):
+    def __init__(
+        self,
+        seed: int = 0,
+        map_name: str = "4x4",
+        is_slippery: bool = True,
+        wind_probabilities: tuple[float, float, float, float, float] = (0.7, 0.075, 0.075, 0.075, 0.075), # WIND_NONE, N, E, S, W
+        render_mode: Union[str, None] = None,
+        policy: Union[PolicyType,  None] = None
+    ) -> None:
         super().__init__()
         self.map_name = map_name
         self.is_slippery = is_slippery
@@ -83,6 +71,9 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         self.clock = None
         self.cell_size = 50  # Cell size for "human" mode rendering (can be different from TILE_SIZE)
         
+        self.policy = policy if policy is not None \
+            else lambda obs, wind: self.np_random.integers(0, self.action_space.n)
+
         # Ensure Pygame modules are initialized if any rendering will occur.
         # image.load() might need display module to be initialized even for rgb_array.
         if self.render_mode in ["human", "rgb_array"]:
@@ -228,7 +219,7 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         return (int(s_next), final_reward, terminated, truncated, info)
 
     def action(self):
-        return self.np_random.integers(self.action_space.n)
+        return self.policy(self.observation(), self.wind_map[self._to_rc(self.agent_pos)])
 
     def observation(self):
         raise NotImplementedError

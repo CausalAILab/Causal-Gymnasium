@@ -37,6 +37,7 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         wind_mean: float = 0.0,
         wind_std: float = 0.2,
         render_mode=None,
+        policy: PolicyType | None = None,
     ) -> None:
         super().__init__()
         self._env = gym.make("LunarLander-v3", render_mode=render_mode)
@@ -53,7 +54,10 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         self.action_space: spaces.Discrete = self._env.action_space        # 4 actions
 
         # Simple random behaviour policy (can be replaced by caller)
-        self.policy = lambda obs: self.np_random.integers(0, self.action_space.n)
+        if policy is not None:
+            self.policy = policy
+        else:
+            self.policy = lambda obs, wind: self.np_random.integers(0, self.action_space.n)
 
     # ------------------------------------------------------------------
     #  SCM API
@@ -72,14 +76,18 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         return self._last_obs, info
 
     def step(self, action: int):
-        obs, reward, terminated, truncated, info = self._env.step(action)
-
         # Inject wind by applying a small horizontal force each physics step
         if self.current_wind is not None:
             # access underlying Box2D lander body
             self._env.unwrapped.lander.ApplyForceToCenter((self.current_wind, 0.0), True)
             # observation after force (approx) – we leave obs unchanged; stochasticity
             # is captured in the physics engine itself.
+        
+        # Step the environment after the wind application
+        obs, reward, terminated, truncated, info = self._env.step(action)
+
+        # Sample new wind
+        self.sample_u()  # draw new wind
 
         self._last_obs = obs.astype(np.float32) # Store observation after step
         return self._last_obs, float(reward), terminated, truncated, info # Return 5 values
@@ -94,7 +102,7 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
              # we might need a default observation or action here.
              # Returning random action as a placeholder if obs is None
              return self.np_random.integers(0, self.action_space.n)
-        return self.policy(obs)
+        return self.policy(obs, self.current_wind)
 
     def observation(self):
         # Return the last stored observation
@@ -112,6 +120,7 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         nodes = {0: "Wind(U)", 1: "State(V)", 2: "Action(X)", 3: "Reward(Y)"}
         base = [[0] * 4 for _ in range(4)]
         base[0][1] = 1  # U → V
+        base[0][2] = 1  # U → X
         base[1][2] = 1  # V → X
         base[1][3] = 1  # V → Y
         base[2][3] = 1  # X → Y

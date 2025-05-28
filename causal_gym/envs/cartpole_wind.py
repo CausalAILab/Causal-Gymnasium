@@ -25,10 +25,10 @@ from ..core.types import ObsType, ActType, PolicyType
 class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
     """CartPole with a latent horizontal *wind* force.
 
-    The latent wind (u_wind) is sampled once at episode start and
-    then applied at every step as a small additive acceleration to
-    the cart's velocity.  Pole *tilt* is fixed to zero by default; if
-    you still want random initial angles you can pass a non‑zero
+    The latent wind (u_wind) is sampled every step as a 
+    small additive acceleration to the cart's velocity.  
+    Pole *tilt* is fixed to zero by default; 
+    if you still want random initial angles you can pass a non‑zero
     `init_theta_std`.
     """
 
@@ -41,6 +41,7 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
         init_theta_mean: float = 0.0,
         init_theta_std: float = 0.0,
         render_mode=None,
+        policy: PolicyType | None = None,
     ) -> None:
         super().__init__()
         self.max_episode_steps = max_episode_steps
@@ -64,7 +65,10 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
         self.observation_space: spaces.Box = self._env.observation_space
 
         # Trivial random behaviour policy (can be replaced)
-        self.policy = lambda obs: self.np_random.integers(0, 2)
+        if policy is not None:
+            self.policy = policy
+        else:
+            self.policy = lambda obs, wind: self.np_random.integers(0, 2)
 
     # ------------------------------------------------------------------
     #  Causal‑Gym API
@@ -92,7 +96,6 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
 
     def step(self, action):
         self._elapsed_steps += 1
-        obs, reward, terminated, truncated, info = self._env.step(action)
 
         # Inject wind as horizontal acceleration (m/s per step)
         if self.current_wind is not None:
@@ -101,16 +104,21 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
             self._env.unwrapped.state = np.array(state, dtype=np.float32)
             obs = np.array(state, dtype=np.float32)
 
+        # Step the environment after injecting wind
+        obs, reward, terminated, truncated, info = self._env.step(action)
+
+        # Sample new wind for the next step
+        self.sample_u()  
+
         if self._elapsed_steps >= self.max_episode_steps:
             truncated = True
-            terminated = True
 
         return obs, reward, terminated, truncated, info
 
     # Convenience helpers -----------------------------------------------
     def action(self):
         obs = self.observation()
-        return self.policy(obs) if self.policy else self.np_random.integers(0, 2)
+        return self.policy(obs, self.current_wind) if self.policy else self.np_random.integers(0, 2)
 
     def observation(self):
         return np.array(self._env.unwrapped.state, dtype=np.float32)
@@ -127,6 +135,7 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
         nodes = {0: "Wind(U)", 1: "State(V)", 2: "Action(X)", 3: "Reward(Y)"}
         base = [[0] * 4 for _ in range(4)]
         base[0][1] = 1  # Wind → State
+        base[0][2] = 1  # Wind → Action
         base[1][2] = 1  # State → Action
         base[1][3] = 1  # State → Reward
         base[2][3] = 1  # Action → Reward

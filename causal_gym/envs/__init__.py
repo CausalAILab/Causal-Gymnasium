@@ -11,7 +11,7 @@ from gymnasium.envs.registration import register
 register(
     id="causal_gym/WindyGridWorld-v0",
     entry_point="causal_gym.envs:WindyGridWorldEnv",
-    max_episode_steps=10,
+    max_episode_steps=None,
 )
 
 # register(
@@ -23,7 +23,9 @@ register(
 register(
     id="causal_gym/CartPoleWind-v0",
     entry_point="causal_gym.envs:CartPoleWindPCH",
-    max_episode_steps=200,
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
 )
 
 register(
@@ -59,11 +61,15 @@ register(
 register(
     id="causal_gym/FrozenLakePCH-v0",
     entry_point="causal_gym.envs:FrozenLakePCH",
-    max_episode_steps=100,
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
 )
 
 register(
     id="causal_gym/LunarLanderPCH-v0",
     entry_point="causal_gym.envs:LunarLanderPCH",
-    max_episode_steps=1000,
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
 )

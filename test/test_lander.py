@@ -36,8 +36,8 @@ def run_observational(env, n_episodes, horizon):
         env.reset()
         success = False
         for _ in range(horizon):
-            _, obs, r, done, _ = env.see()
-            if done:
+            _, obs, r, term, trunc, _ = env.see()
+            if term or trunc:
                 success = (r == 100)  # built-in landing bonus
                 break
         if success:
@@ -54,8 +54,8 @@ def run_interventional(env, n_episodes, horizon, action):
         env.reset()
         success = False
         for _ in range(horizon):
-            obs, r, done, _ = env.do(action)
-            if done:
+            obs, r, term, trunc, _ = env.do(action)
+            if term or trunc:
                 success = (r == 100)
                 break
         if success:
@@ -76,8 +76,8 @@ def run_ctf_ucbvi(env, agent, n_episodes, horizon, best_p):
 
         for _ in range(horizon):
             # 1) Observe under behavior policy
-            x_int, obs, _, done_obs, _ = env.see()
-            if done_obs:
+            x_int, obs, _, term_obs, trunc_obs, _ = env.see()
+            if term_obs or trunc_obs:
                 # episode ended under the behavior policy
                 break
 
@@ -86,14 +86,14 @@ def run_ctf_ucbvi(env, agent, n_episodes, horizon, best_p):
             act = agent.act(s, x_int)
 
             # 3) Execute the chosen action
-            obs_n, r, done, _ = env.do(act)
+            obs_n, r, term, trunc, _ = env.do(act)
 
             # 4) Log the transition
             s_n = agent.discretize(obs_n)
             agent.update(s, x_int, act, r, s_n)
 
             tot_reward += r
-            if done:
+            if term or trunc:
                 # episode ended after intervention
                 break
 

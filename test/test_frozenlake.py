@@ -14,8 +14,8 @@ def run_observational(env, n_episodes, horizon):
         _, _ = env.reset()
         goal = False
         for _ in range(horizon):
-            x_int, obs, r_obs, done, _ = env.see()
-            if done:
+            x_int, obs, r_obs, term, trunc, _ = env.see()
+            if term or trunc:
                 goal = (r_obs == 1.0)
                 break
         reached.append(goal)
@@ -28,8 +28,8 @@ def run_interventional(env, n_episodes, horizon, action):
         _, _ = env.reset()
         goal = False
         for _ in range(horizon):
-            obs, r, done, _ = env.do(action)
-            if done:
+            obs, r, term, trunc, _ = env.do(action)
+            if term or trunc:
                 goal = (r == 1.0)
                 break
         reached.append(goal)

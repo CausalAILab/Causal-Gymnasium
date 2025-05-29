@@ -216,13 +216,13 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         if self.render_mode == "human":
             self.render(mode="human")
 
-        return (int(s_next), final_reward, terminated, truncated, info)
+        return int(s_next), final_reward, terminated, truncated, info
 
     def action(self):
         return self.policy(self.observation(), self.wind_map[self._to_rc(self.agent_pos)])
 
     def observation(self):
-        raise NotImplementedError
+        return int(self.agent_pos)
 
     @staticmethod
     def _render_individual_wind_arrow(wind_direction: int, tile_s: int) -> pygame.Surface | None:

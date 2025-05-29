@@ -143,8 +143,8 @@ class LunarLanderPCH(PCH):
     # ------------------------------------------------------------------
     def see(self):
         a = self.env.action()
-        obs, r, done, info = self.env.step(a)
-        return a, obs, r, done, info
+        obs, r, terminated, truncated, info = self.env.step(a)
+        return a, obs, r, terminated, truncated, info
 
     # ------------------------------------------------------------------
     #  Layer‑2 interventional regime – DO

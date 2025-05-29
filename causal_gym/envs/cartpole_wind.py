@@ -132,14 +132,18 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
     # Causal graph -------------------------------------------------------
     @property
     def get_graph(self):
-        nodes = {0: "Wind(U)", 1: "State(V)", 2: "Action(X)", 3: "Reward(Y)"}
-        base = [[0] * 4 for _ in range(4)]
-        base[0][1] = 1  # Wind → State
-        base[0][2] = 1  # Wind → Action
-        base[1][2] = 1  # State → Action
-        base[1][3] = 1  # State → Reward
-        base[2][3] = 1  # Action → Reward
-        conf = [[0] * 4 for _ in range(4)]
+        nodes = {0: "Wind(U)", 1: "State(S)", 2: "Action(X)", 3: "Reward(Y)", 4: "Next_State(S')"}
+        base = [[0] * 5 for _ in range(5)]
+        base[0][2] = 1  # U → X
+        base[0][4] = 1  # U → S'
+        base[1][2] = 1  # S → X
+        base[1][3] = 1  # S → Y
+        base[2][3] = 1  # X → Y
+        base[1][4] = 1  # S → S'
+        base[2][4] = 1  # X → S'
+        conf = [[0] * 5 for _ in range(5)]
+        conf[2][4] = 1
+        conf[4][2] = 1
         return nodes, base, conf
 
 

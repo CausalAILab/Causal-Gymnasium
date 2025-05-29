@@ -2,8 +2,8 @@ from .windy_minigrid import WindyMiniGridSCM, WindyMiniGridPCH
 from .mdp_example import MDPExampleSCM, MDPExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
-from .wheredo_example import ExampleSCM_9_5, ExamplePCH_9_5
-from .wheredo_exercise import ExerciseSCM, ExercisePCH
+# from .wheredo_example import ExampleSCM_9_5, ExamplePCH_9_5
+# from .wheredo_exercise import ExerciseSCM, ExercisePCH
 from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
 from .frozen_lake import FrozenLakeSCM, FrozenLakePCH
 from .lunar_lander import LunarLanderSCM, LunarLanderPCH

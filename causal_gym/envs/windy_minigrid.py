@@ -152,15 +152,26 @@ class WindyMiniGridSCM(SCM):
         Returns:
             Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
             base_graph: an extended adjacent matrix representation of the directed graphical structure.  
-                G[i,j] = -1 i<-j
                 G[i,j] = 0 i j
                 G[i,j] = 1 i->j
             conf_graph: a matrix representing the existence of confounders between nodes.
                 G[i, j] = 0 no confounder
                 G[i, j] = 1 i<->j
         """
-        # TODO: find a way to automatically generate graph from code?
-        raise NotImplementedError
+        nodes = {0: "Wind(U)", 1: "State(S)", 2: "Action(X)", 3: "Reward(Y)", 4: "Next_State(S')"}
+        base = [[0] * 5 for _ in range(5)]
+        base[0][1] = 1  # U → S
+        base[0][2] = 1  # U → X
+        base[0][4] = 1  # U → S'
+        base[1][2] = 1  # S → X
+        base[1][3] = 1  # S → Y
+        base[2][3] = 1  # X → Y
+        base[1][4] = 1  # S → S'
+        base[2][4] = 1  # X → S'
+        conf = [[0] * 5 for _ in range(5)]
+        conf[2][4] = 1
+        conf[4][2] = 1
+        return nodes, base, conf
 
     def action(self):
         """sample action from the behavioral policy

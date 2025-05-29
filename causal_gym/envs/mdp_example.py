@@ -56,19 +56,6 @@ class MDPExampleSCM(SCM):
     
     def state_transition(self, u1: int, u2: int, s: int, x: int) -> int:
         return (u1 != u2) != (s | x)
-    
-    # def see(self):
-    #     self.x = self.action(self.s, u1)
-    #     self.num_step += 1
-    #     u1 = self._u1()
-    #     u2 = self._u2()
-    #     u3 = self._u3()
-    #     self.x = self.action(self.s, u1)
-    #     self.y = ((self.s != self.x) != u1) != u3
-    #     # next state
-    #     self.s = self.state_transition(u1, u2, self.s, self.x)
-    #     # Return action, next state, reward, terminated, truncated, info
-    #     return self.x, self.s, self.y, False, self.num_step > self._max_step, {}
 
     def sample_u(self):
         """

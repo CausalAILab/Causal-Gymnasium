@@ -67,6 +67,38 @@ class MaskedAtariSCM(SCM):
         action = self.policy(self.current_full_obs)
         return action
     
+    @property
+    def get_graph(self):
+        nodes = {
+            0: "Masked Portion (O_m)", 
+            1: "Unmasked Portion (O)", 
+            2: "Action(X)", 
+            3: "Reward(Y)", 
+            4: "State(S)", 
+            5: "Next State(S')"
+        }
+        # The base graph structure for the Atari environment
+        base = [[0] * 6 for _ in range(6)]  # Updated to accommodate the new node
+        base[4][0] = 1  # S → O_m
+        base[4][1] = 1  # S → O
+        base[0][2] = 1  # O_m → X, natural regime can see
+        base[1][2] = 1  # O → X
+        base[4][3] = 1  # S → Y
+        base[2][3] = 1  # X → Y
+        base[4][5] = 1  # O → S'
+        base[2][5] = 1  # X → S'
+        conf = [[0] * 6 for _ in range(6)]  # Updated to accommodate the new node
+        # X and S'
+        conf[2][5] = 1
+        conf[5][2] = 1
+        # Y and S'
+        conf[3][5] = 1
+        conf[5][3] = 1
+        # X and Y
+        conf[2][3] = 1
+        conf[3][2] = 1
+        return nodes, base, conf
+    
 
 class MaskedAtariPCH(PCH):
     metadata = {"render_modes": ["rgb_array"]}

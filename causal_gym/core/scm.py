@@ -129,7 +129,6 @@ class SCM(
         Returns:
             Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
             base_graph: an extended adjacent matrix representation of the directed graphical structure.  
-                G[i,j] = -1 i<-j
                 G[i,j] = 0 i j
                 G[i,j] = 1 i->j
             conf_graph: a matrix representing the existence of confounders between nodes.

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 
 from collections import namedtuple
 
-from causal_gym.core import PolicyScope
+from .policy_scope import PolicyScope
 
 # Define the task as a named tuple
 class Task(namedtuple('Task', ['learning_regime', 'str_assump', 'policy_space', 'reward_func'])):

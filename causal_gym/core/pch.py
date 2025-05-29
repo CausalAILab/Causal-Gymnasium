@@ -119,7 +119,7 @@ class PCH(
 class PCHWrapper(
     PCH[WrapperPolicyType, WrapperObsType, WrapperActType, PolicyType, ObsType, ActType]
 ):
-    """Wraps a :class:`causal_gym.PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
+    """Wraps a :class:`PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
     This class is the base class of all wrappers to change the behavior of the underlying SCM.
     PCHWrappers that inherit from this class can modify the :attr:`action_space`, :attr:`observation_space`,
@@ -284,7 +284,7 @@ class ActionPCHWrapper(
 
     If you would like to apply a function to the action before passing it to the base environment,
     you can simply inherit from :class:`ActionPCHWrapper` and overwrite the method  :meth:`wrap_action` and :meth:`unwrap_action` to implement
-    that transformation. The transformation defined in that method must take values in the base environment’s
+    that transformation. The transformation defined in that method must take values in the base environment's
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
     the :meth:`__init__` method of your wrapper.
@@ -330,7 +330,7 @@ class PolicyPCHWrapper(
 
     If you would like to deploy a policy to the base environment,
     you can simply inherit from :class:`PolicyPCHWrapper` and overwrite the method  :meth:`action` and :meth:`see` to implement
-    that transformation. The policy defined in that method must take values in the base environment’s
+    that transformation. The policy defined in that method must take values in the base environment's
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
     the :meth:`__init__` method of your wrapper.

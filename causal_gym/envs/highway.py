@@ -539,7 +539,7 @@ class HighwayPCH(PCH):
 
     def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
         # initialize underlying SCM
-        self.env = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
+        self.env: HighwaySCM = HighwaySCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
         super().__init__()
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:

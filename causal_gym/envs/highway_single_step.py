@@ -227,7 +227,7 @@ class HighwaySingleStepPCH(PCH):
 
     def __init__(self, config: Dict[str, Any] = None, seed: int = None):
         # initialize underlying SCM
-        self.env = HighwaySingleStepSCM(config=config, seed=seed)
+        self.env: HighwaySingleStepSCM = HighwaySingleStepSCM(config=config, seed=seed)
         super().__init__()
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:

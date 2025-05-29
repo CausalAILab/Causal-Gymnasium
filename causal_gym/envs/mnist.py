@@ -171,7 +171,7 @@ class MNISTPCH(PCH):
     '''PCH wrapper for MNISTSCM.'''
 
     def __init__(self, seed: int = None):
-        self.env = MNISTSCM(seed=seed)  # Ensure env is set before base class init
+        self.env: MNISTSCM = MNISTSCM(seed=seed)  # Ensure env is set before base class init
         super().__init__()
 
     def see(self, behavioral_policy = None) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:

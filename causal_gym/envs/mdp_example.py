@@ -2,6 +2,7 @@ import math
 import numpy as np
 
 from causal_gym import SCM, PCH
+from causal_gym.core.causal_graph import CausalGraph
 from causal_gym.core import PolicyType, ActType, ObsType
 
 class MDPExampleSCM(SCM):
@@ -83,6 +84,13 @@ class MDPExampleSCM(SCM):
         self.s = self.state_transition(u1, u2, self.s, x)
         # Return next state, reward, terminated, truncated, info
         return self.s, self.y, False, self.num_step > self._max_step, {}
+    
+    def get_graph():
+        cdag = CausalGraph({'S_i','X_i','S_{i-1}','X_{i-1}','Y'},
+                           [('S_{i-1}','S_i'),('X_{i-1}','S_i'),('S_i','X_i'),('S_i','Y'),('X_i','Y')],
+                           [('S_i','X_{i-1}','U_{i-1,1}'),('S_i','X_{i-1}','U_{i-1,1}')])
+        return cdag.nx_viz()
+
     
 
 class MDPExamplePCH(PCH):

@@ -3,12 +3,21 @@ from .windy_minigrid import WindyMiniGridSCM, WindyMiniGridPCH
 from .mdp_example import MDPExampleSCM, MDPExamplePCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
+from .wheredo_example import ExampleSCM_9_5, ExamplePCH_9_5
+from .wheredo_exercise import ExerciseSCM, ExercisePCH
+from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
+from .frozen_lake import FrozenLakeSCM, FrozenLakePCH
+from .lunar_lander import LunarLanderSCM, LunarLanderPCH
+from .mnist import MNISTSCM, MNISTPCH
+from .highway_single_step import HighwaySingleStepSCM, HighwaySingleStepPCH
+from .highway import HighwaySCM, HighwayPCH
+from .race import RaceSCM, RacePCH
 
 from gymnasium.envs.registration import register
 register(
     id="causal_gym/WindyGridWorld-v0",
     entry_point="causal_gym.envs:WindyGridWorldEnv",
-    max_episode_steps=10,
+    max_episode_steps=None,
 )
 
 # register(
@@ -16,6 +25,14 @@ register(
 #     entry_point="causal_gym.envs:MDPExamplePCH",
 #     max_episode_steps=50,
 # )
+
+register(
+    id="causal_gym/CartPoleWind-v0",
+    entry_point="causal_gym.envs:CartPoleWindPCH",
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
+)
 
 register(
     id="Custom-LavaCrossing-easy-v0",
@@ -47,3 +64,18 @@ register(
     kwargs={"mode": 'maze2'},
 )
 
+register(
+    id="causal_gym/FrozenLakePCH-v0",
+    entry_point="causal_gym.envs:FrozenLakePCH",
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
+)
+
+register(
+    id="causal_gym/LunarLanderPCH-v0",
+    entry_point="causal_gym.envs:LunarLanderPCH",
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
+)

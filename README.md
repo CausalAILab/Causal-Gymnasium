@@ -41,7 +41,7 @@ CausalGym environments are designed to be used with various reinforcement learni
 ## Installation and Usage
 1.  **Installation**: Clone this repository. To install the CausalGym library and its dependencies, navigate to the root directory of the cloned `causalgym` repository and run:
     ```bash
-    pip install .
+    pip install -e .
     ```
 2.  **Dependencies**: Requires `pygame`, `numpy`, `gymnasium`, and other common scientific Python libraries (see `setup.py` for full list of dependencies).
 3.  **Usage**: Import environments from `causalgym.causal_gym.envs` and algorithms from `causalgym.causal_gym.algorithms` in your Python scripts or notebooks.

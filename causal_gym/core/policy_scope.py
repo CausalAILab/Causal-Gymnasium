@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 
 from collections import namedtuple
-from .obj_types import *
+from .types import *
 
 
 # Define the policy scope as a named tuple

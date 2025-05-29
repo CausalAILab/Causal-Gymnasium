@@ -12,7 +12,7 @@ from gymnasium.utils import RecordConstructorArgs, seeding
 if TYPE_CHECKING:
     from gymnasium.envs.registration import EnvSpec, WrapperSpec
 
-from .obj_types import *
+from .types import *
 
 class SCM(
     Env[ObsType, ActType],

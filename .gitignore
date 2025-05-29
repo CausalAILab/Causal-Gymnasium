@@ -6,13 +6,7 @@
 *.pyc
 *.egg-info/
 **/.gym_env/
-**/cdag.png
-**/cdag*.png
 **/graph.html
 **/lib
-**/toy_figs
-**/scm_ex.py
-**/test_bandit.py
-**/test_mdpexample.ipynb
-**/test_wheredo.ipynb
-**/viz_util.py
+**/toy_figss
+**/*.png

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from gymnasium.envs.registration import EnvSpec, WrapperSpec
 
 from .scm import SCM
-from .obj_types import *
+from .types import *
 
 
 class PCH(    

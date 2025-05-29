@@ -7,6 +7,11 @@ from .cartpole_wind import CartPoleWindSCM, CartPoleWindPCH
 from .frozen_lake import FrozenLakeSCM, FrozenLakePCH
 from .lunar_lander import LunarLanderSCM, LunarLanderPCH
 
+from .mnist import MNISTSCM, MNISTPCH
+from .highway_single_step import HighwaySingleStepSCM, HighwaySingleStepPCH
+from .highway import HighwaySCM, HighwayPCH
+from .race import RaceSCM, RacePCH
+
 from gymnasium.envs.registration import register
 register(
     id="causal_gym/WindyGridWorld-v0",

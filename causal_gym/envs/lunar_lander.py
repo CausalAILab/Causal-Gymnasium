@@ -15,12 +15,15 @@ Place this file inside `causal_gym/envs/` next to the existing
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
 from ..core import SCM, PCH
 from ..core.types import ObsType, ActType, PolicyType
+from .constants import WIND_ICONS
+from .utils import overlay_resized_image
 
 __all__ = ["LunarLanderSCM", "LunarLanderPCH"]
 
@@ -66,18 +69,21 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
     # ------------------------------------------------------------------
     def sample_u(self):
         """Draw the latent wind for *this* episode and store it."""
-        # the map is a continuous box from -2.5 to 2.5 on both x and y axes
-        # we discretize it to a 5x5 grid for simplicity
-        self.wind_map = self.np_random.normal(self.wind_mean, self.wind_std, size=(5, 5))
+        # the map is a continuous box from 0 to 20 on x 
+        # and 0-15 roughly on y axes
+        # we discretize it to a 15x20 grid for simplicity
+        self.wind_map = self.np_random.normal(self.wind_mean, self.wind_std, size=(15, 20))
         return self.wind_map
 
     def get_current_wind(self):
-        lander_x, lander_y = self._env.unwrapped.lander.position
+        # Extract lander position from last observation
+        lander_x, lander_y = self.unwrapped.lander.position.x, self.unwrapped.lander.position.y
         # Ensure the lander position is within the bounds of the wind map
-        loc_to_index = lambda x: np.floor(max(0, min(4.9, x + 2.5)))
+        x_to_index = lambda x: np.floor(max(0, min(19.9, x))).astype(int)
+        y_to_index = lambda y: np.floor(max(0, min(14.9, y))).astype(int)
         if self.wind_map is None:
             raise ValueError("Wind map has not been sampled yet. Call sample_u() first.")
-        self.current_wind = self.wind_map[loc_to_index(lander_x)][loc_to_index(lander_y)]
+        self.current_wind = self.wind_map[y_to_index(lander_y)][x_to_index(lander_x)]
         return self.current_wind
 
     # Gym‑style interface ------------------------------------------------
@@ -96,6 +102,9 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
             self._env.unwrapped.lander.ApplyForceToCenter((self.current_wind, 0.0), True)
             # observation after force (approx) – we leave obs unchanged; stochasticity
             # is captured in the physics engine itself.
+
+        # Get current natural action
+        self._natural_action = self.action()
         
         # Step the environment after the wind application
         obs, reward, terminated, truncated, info = self._env.step(action)
@@ -122,8 +131,54 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         # Return the last stored observation
         return self._last_obs 
 
-    def render(self):
-        return self._env.render()
+    def render(self, show_wind=False, show_natural_action=False):
+        obs = self._env.render()
+        if show_wind:
+            # right, down, left, up, circle, cross
+            if self.current_wind > 0:
+                wind_icon = WIND_ICONS[0] 
+            elif self.current_wind < 0:
+                wind_icon = WIND_ICONS[2]
+            else:
+                wind_icon = WIND_ICONS[4]
+            # overlay the windicon upon original obs
+            cv2.putText(
+                obs,                       # image (in-place modification)
+                text='Wind:',              # text to draw
+                org=(10, 350),             # bottom-left corner of text
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,  # font
+                fontScale=0.5,             # font scale (size)
+                color=(0, 0, 0),     # color (B, G, R) — white in BGR
+                thickness=1,               # thickness of the stroke
+                lineType=cv2.LINE_AA       # anti-aliased line
+            )
+            obs = overlay_resized_image(obs, wind_icon, 1/20, 330, 50)
+        if show_natural_action:
+            action = self._natural_action
+            if action == 0:
+                # do nothing
+                action_icon = WIND_ICONS[4]
+            elif action == 1:
+                # left orient engine
+                action_icon = WIND_ICONS[2]
+            elif action == 2:
+                # main, up
+                action_icon = WIND_ICONS[3]
+            else:
+                # right orient engine
+                action_icon = WIND_ICONS[0]
+            cv2.putText(
+                obs,                       # image (in-place modification)
+                text='Natural Action:',              # text to draw
+                org=(10, 380),             # bottom-left corner of text
+                fontFace=cv2.FONT_HERSHEY_SIMPLEX,  # font
+                fontScale=0.5,             # font scale (size)
+                color=(0, 0, 0),     # color (B, G, R) — white in BGR
+                thickness=1,               # thickness of the stroke
+                lineType=cv2.LINE_AA       # anti-aliased line
+            )
+            obs = overlay_resized_image(obs, action_icon, 1/20, 360, 130)
+        return obs
 
     def close(self):
         return self._env.close()

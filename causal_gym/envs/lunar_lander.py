@@ -46,7 +46,9 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         # Exogenous wind distribution (sampled once per episode)
         self.wind_mean = wind_mean
         self.wind_std = wind_std
+        # positive for left, negative for right wind
         self.current_wind: float | None = None
+        self.wind_map: tuple | None = None
         self._last_obs: ObsType | None = None # Initialize last observation storage
 
         # Observation / action spaces
@@ -64,20 +66,32 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
     # ------------------------------------------------------------------
     def sample_u(self):
         """Draw the latent wind for *this* episode and store it."""
-        self.current_wind = self.np_random.normal(self.wind_mean, self.wind_std)
-        return {"u_wind": self.current_wind}
+        # the map is a continuous box from -2.5 to 2.5 on both x and y axes
+        # we discretize it to a 5x5 grid for simplicity
+        self.wind_map = self.np_random.normal(self.wind_mean, self.wind_std, size=(5, 5))
+        return self.wind_map
+
+    def get_current_wind(self):
+        lander_x, lander_y = self._env.unwrapped.lander.position
+        # Ensure the lander position is within the bounds of the wind map
+        loc_to_index = lambda x: np.floor(max(0, min(4.9, x + 2.5)))
+        if self.wind_map is None:
+            raise ValueError("Wind map has not been sampled yet. Call sample_u() first.")
+        self.current_wind = self.wind_map[loc_to_index(lander_x)][loc_to_index(lander_y)]
+        return self.current_wind
 
     # Gym‑style interface ------------------------------------------------
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed, options=options)
         obs, info = self._env.reset(seed=seed)
-        self.sample_u()  # draw new wind
+        info['wind_map'] = self.sample_u()  # draw new wind
         self._last_obs = obs.astype(np.float32) # Store initial observation
         return self._last_obs, info
 
     def step(self, action: int):
         # Inject wind by applying a small horizontal force each physics step
-        if self.current_wind is not None:
+        if self.wind_map is not None:
+            self.current_wind = self.get_current_wind()  # Get the current wind based on lander position
             # access underlying Box2D lander body
             self._env.unwrapped.lander.ApplyForceToCenter((self.current_wind, 0.0), True)
             # observation after force (approx) – we leave obs unchanged; stochasticity
@@ -86,8 +100,8 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
         # Step the environment after the wind application
         obs, reward, terminated, truncated, info = self._env.step(action)
 
-        # Sample new wind
-        self.sample_u()  # draw new wind
+        # Only sample wind for each single episode
+        # self.sample_u()  # draw new wind
 
         self._last_obs = obs.astype(np.float32) # Store observation after step
         return self._last_obs, float(reward), terminated, truncated, info # Return 5 values

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 from .scm import SCM
 from .types import *
+from .task import Task
 
 
 class PCH(    
@@ -30,11 +31,12 @@ class PCH(
             env: The environment to wrap
         """
         self.env: SCM
+        self._policy: WrapperPolicyType | None = None
+        self.task: Task | None = None
 
         assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, Env)
         Wrapper.__init__(self, self.env)
 
-        self._policy: WrapperPolicyType | None = None
 
 
     def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:

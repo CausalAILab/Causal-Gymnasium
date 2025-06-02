@@ -1,6 +1,6 @@
 import numpy as np
 import gymnasium as gym
-from gymnasium_robotics.envs.adroit_hand.adroit_door import AdroitHandDoorEnv
+# from gymnasium_robotics.envs.adroit_hand.adroit_door import AdroitHandDoorEnv
 
 from ..core import SCM, PCH
 

@@ -18,5 +18,11 @@ setup(
         "torch>=2.7.0",
         "torchvision>=0.22.0",
         "multiprocess>=0.70.16",  # Retained from original
+        "Box2D>=2.3.10",
     ],
+    extras_require={
+        'dev': [
+            'ipykernel',  # good for testing w/ notebooks
+        ]
+    }
 )

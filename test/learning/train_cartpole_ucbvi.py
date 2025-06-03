@@ -21,7 +21,7 @@ if algorithms_dir not in sys.path:
     sys.path.insert(0, algorithms_dir) # For ucbvi.py, ucbq.py
 
 try:
-    from cartpole_wind_pch import CartPoleWindPCH # Assumed in project_root
+    from causal_gym.envs.cartpole_wind import CartPoleWindPCH
     from ucbvi import UCBVI # Assumed in algorithms_dir
     try:
         from ucbq import UCBQ # Assumed in algorithms_dir

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg') # Explicitly set backend BEFORE importing pyplot
+matplotlib.use("Qt5Agg") # Explicitly set backend BEFORE importing pyplot
 import matplotlib.pyplot as plt
 import sys
 import os

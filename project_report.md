@@ -198,6 +198,38 @@ This section details the learning algorithms implemented and used in this projec
     7.  **Planning (for Model-Based Algos like UCBVI):** Periodically, `ucbvi_agent.plan()` is called to re-compute Q-values based on the updated model.
     8.  Repeat from step 1 until the episode ends or training is complete.
 
+### 3.4 Algorithm Parameter Tuning Insights
+
+A crucial part of applying algorithms like UCBVI effectively involves careful parameter tuning. Initial experiments, particularly with the FrozenLake environment, revealed that certain parameters have a profound impact on learning performance.
+
+*   **Decoupling Planning Horizon from Reward Scaling:**
+    A key finding was the necessity to decouple the `horizon` parameter. Originally, a single `horizon` was used for:
+    1.  The number of planning sweeps in value iteration (an integer).
+    2.  Clipping optimistic Q-values (`Q = min(horizon, ...)`).
+    3.  Scaling the exploration bonus (`bonus = c_bonus * horizon * sqrt(...)`).
+
+    This conflation led to issues: a high `horizon` (e.g., 100, for planning) resulted in excessive optimism and poor learning, while a low `horizon` (e.g., 1.0, for reward scaling) was unsuitable for planning sweeps. The solution was to modify `CtfUCBDriver (UCBVI)` and `ucb_q` to accept two distinct parameters:
+    *   `planning_sweeps` (integer): For the number of value iteration sweeps (e.g., 100).
+    *   `max_episode_reward` (float): For Q-value clipping and bonus scaling, set to reflect the true maximum achievable reward in an episode (e.g., 1.0 for FrozenLake).
+
+*   **`c_bonus` (Exploration Constant):**
+    Once `max_episode_reward` was set appropriately to reflect the actual reward scale of the environment, a `c_bonus` value of **1.0** was found to be effective for FrozenLake. This provided a better balance for exploration compared to larger theoretical values when `max_episode_reward` was also large and miscalibrated. The effective exploration pressure results from the interplay of `c_bonus * max_episode_reward`.
+
+*   **Successful Configuration (FrozenLake Example):**
+    For the 4x4 non-slippery FrozenLake with wind, the following UCBVI parameters yielded good learning:
+    *   `planning_sweeps`: 100
+    *   `max_episode_reward`: 1.0
+    *   `c_bonus`: 1.0
+    *   `delta`: 0.1
+
+*   **Implications for Other Environments:**
+    These parameters, especially `max_episode_reward` and `c_bonus`, are highly sensitive and will require specific tuning for other environments like Lunar Lander and Cartpole Wind, based on their unique reward structures and scales. For instance:
+    *   **Lunar Lander:** `max_episode_reward` might be in the range of 100-250, given its scoring.
+    *   **Cartpole Wind:** If max episode length is 200 and reward is +1 per step, `max_episode_reward` could be near 200.
+    The quality of state discretization for these continuous environments is also a critical precursor to successful learning with tabular UCBVI.
+
+These tuning insights are vital for achieving meaningful learning results and should be considered when applying UCBVI or similar optimistic algorithms to new environments.
+
 ## 4. Testing and Learning Demonstrations
 
 This section outlines how the environments and algorithms are tested, including basic interaction examples derived from the test scripts and notebooks, and more complex learning scenarios demonstrating the application of UCBVI and UCBQ.
@@ -304,50 +336,4 @@ This subsection details how the UCBVI and UCBQ algorithms are applied to the cus
                 f.  `agent.update(s, x_int, a, r, s_n)`.
             4.  `agent.plan(num_sweeps=PLAN_SWEEPS)` is called periodically (e.g., every `PLAN_PERIOD = 3` episodes) to update Q-values.
         *   **Metrics & Outputs:**
-            *   A baseline success probability (`p_int`) is established by always taking a fixed action (e.g., `NOOP=0`) interventionally (`env.do(0)`). Success is defined as `total_reward >= 100`.
-            *   UCBVI's success rate (`p_ucb`) is tracked.
-            *   Cumulative regret against the baseline `p_int` is calculated and plotted.
-            *   Outputs include baseline and UCBVI success rates, final regret, and plots for success rates and cumulative regret (`lander_probs_ctf_ucb.png`, `lander_ctf_ucb_regret.png`).
-        *   **Expected Outcome & Challenges:** The agent is expected to learn to land the module. The discretization of the continuous space is a critical step; its coarseness and chosen features can impact learning speed and final performance. The summary notes this environment can be "difficult" and "take a while to learn" due to its continuous nature and the larger discretized state space.
-
-    *   **Cartpole Wind with UCBVI/UCBQ (Details Inferred):
-        *   **Note:** The specific learning test notebook (`test_cartpole_algos.ipynb`) was not accessible. The following description is based on inferences from the project summary, the structure of other learning tests, and the CartPoleWind environment itself.
-        *   **Objective:** Train an agent (UCBVI or UCBQ) to balance the pole for the maximum duration, thereby maximizing the cumulative reward per episode.
-        *   **Discretization Challenge:** CartPoleWind has a 4-dimensional continuous observation space (cart position, cart velocity, pole angle, pole angular velocity). To apply tabular algorithms like UCBVI or UCBQ:
-            *   A `discretize(obs)` function would be necessary to map these continuous observations to a finite set of discrete states.
-            *   This typically involves defining ranges and a number of bins for each of the four dimensions. The total number of discrete states would be the product of these bin counts.
-        *   **Agent Setup (Example for UCBVI):
-            *   An instance of `CartPoleWindPCH` would be used.
-            *   A `UCBVI` agent would be initialized with `num_states` (determined by the discretization scheme), `n_actions=2` (push left/right), an appropriate `horizon` (e.g., the max episode steps of CartPole), and a `delta` value.
-            *   The `agent.discretize` attribute would be assigned the custom discretization function.
-        *   **Learning Process (Example for UCBVI, similar to other environments):
-            1.  Initialize the environment (`env.reset()`).
-            2.  For each step within the episode horizon:
-                a.  Use `env.see()` to get the `intended_action (x_int)` from the SCM's behavioral policy and the current `observation`.
-                b.  Convert `observation` to a discrete state `s` using `agent.discretize()`.
-                c.  The UCBVI agent selects an action `a = agent.act(s, x_int)`.
-                d.  Execute `a` using `env.do(a)` to get `next_observation`, `reward`, and `done` status.
-                e.  Convert `next_observation` to discrete state `s_next`.
-                f.  Update the agent: `agent.update(s, x_int, a, r, s_next)`.
-            3.  Call `agent.plan()` periodically or at the end of each episode to update Q-values.
-        *   **Learning Process (Example for UCBQ):
-            1.  Initialize environment and agent.
-            2.  For each step: discretize `obs` to `s`, UCBQ agent selects `a = agent.act(s)`, execute `a` via `env.do(a)` (or `env.step(a)`), discretize `next_obs` to `s_next`, update `agent.update(s, a, r, s_next)`.
-        *   **Metrics & Outputs (Expected):
-            *   **Average Total Reward:** Tracked per episode.
-            *   **Cumulative Regret:** Calculated against a baseline policy (e.g., an interventional policy that always pushes in one direction, or the observational SCM policy). Regret would be `baseline_average_reward - agent_episode_reward`.
-            *   Plots showing average reward over time and cumulative regret over time.
-        *   **Expected Outcome & Challenges:** The agent would be expected to learn a policy that achieves higher average rewards (longer balancing times) compared to a random or simple baseline. Key challenges would include designing an effective discretization scheme for the 4D continuous space and dealing with the per-step stochastic wind, which adds considerable noise and complexity to the dynamics.
-
-## 5. Conclusion and Future Work
-
-*   **Summary of Achievements:** This project successfully developed three reinforcement learning environments (Frozen Lake, Lunar Lander, Cartpole Wind) incorporating latent variables to explore causal interactions. Two key learning algorithms, UCBVI (designed for counterfactual reasoning) and UCBQ (a UCB-enhanced model-free approach), were implemented and tested within these environments. Demonstrations showcased basic environment interactions, including the use of observational (`see()`) and interventional (`do()`) operations, and the application of the learning algorithms to achieve environment objectives. Performance was evaluated using metrics like success rates and cumulative regret, highlighting the learning process and the challenges posed by continuous state spaces and stochastic latent variables.
-
-*   **Discussion of Challenges:** A primary challenge, particularly for the Lunar Lander and Cartpole Wind environments, lies in the effective discretization of continuous state spaces for use with tabular algorithms like UCBVI and UCBQ. The choice of discretization strategy (number of bins, ranges, selected features) significantly impacts learning performance and efficiency. For Cartpole Wind, the per-step stochasticity of the latent variable (wind) adds another layer of complexity to learning stable control policies. Ensuring the truly counterfactual nature of UCBVI and its interaction with the environment's `see()` and `do()` primitives required careful consideration in the experimental setup.
-
-*   **Potential Areas for Future Development or Research:**
-    *   Exploration of more sophisticated discretization techniques or the application of function approximation methods (e.g., Deep Q-Networks, Policy Gradient methods) to handle continuous state and action spaces more directly, potentially in conjunction with causal discovery or representation learning.
-    *   Further investigation into the definition and utility of different types of counterfactual queries within these environments (e.g., "what if the wind had been X for the entire episode?" vs. "what if the wind at this step was Y?"). This might involve enhancing the SCMs with more explicit controls for setting latent variables for specific counterfactual scenarios.
-    *   Comparative studies of UCBVI against other model-based and model-free algorithms, including those not explicitly designed for counterfactual reasoning, to quantify the benefits of the causal approach.
-    *   Expanding the set of environments with different causal structures or more complex latent variable interactions.
-    *   Developing more robust methods for causal graph discovery or validation from the interaction data generated by these environments.
+            *   A baseline success probability (`p_int`) is established by always taking a fixed action (e.g., `NOOP=0`) interventionally (`env.do(0)`

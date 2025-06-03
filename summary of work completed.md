@@ -22,6 +22,7 @@ UCBQ
 Standard algorithms 26 and 27 from 9.4 of the textbook.
 Intercepts next action with env.action(), determines next action w/ ucbq, takes the action w/ env.do(), updates ucbq.
 Existing action can be anything, as per the textbook, but should cover all actions. Uniform distribution assists w/ exploration, ok and simple to use.
+**Key Finding:** Crucial parameters for UCBVI (planning horizon vs. reward scaling horizon, `c_bonus`) were identified and tuned, significantly improving learning on FrozenLake. These will need careful per-environment tuning for Cartpole and Lunar Lander.
 
 # Testing
 

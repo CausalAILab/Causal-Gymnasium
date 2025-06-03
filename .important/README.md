@@ -1,80 +1,61 @@
-# Counterfactual UCB Reference Kit
+# README: Algorithm Tuning Insights for UCBVI/UCBQ
 
-*(Implements Algorithms 26 & 27 from **Bareinboim & Washington, 2024**)*
+This document summarizes key insights gained from tuning the UCBVI (Upper Confidence Bound Value Iteration) and UCBQ-like algorithms, particularly focusing on parameters critical for effective learning. These insights were primarily derived from experiments with the FrozenLake (Non-Slippery) environment.
 
----
+## 1. The Critical Role of the `horizon` Parameter
 
-## 1  Folder layout
+Initially, a single `horizon` parameter in the UCBVI/UCBQ implementations was used for multiple purposes:
+*   As the number of planning sweeps in value iteration (an integer).
+*   As the value for clipping optimistic Q-values (e.g., `Q = min(horizon, ...)`).
+*   As a scaling factor for the exploration bonus term (e.g., `bonus = c_bonus * horizon * sqrt(...)`).
 
-| file           | Textbook analogue                              | Purpose                                                                                                                                                                       |
-| -------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`ucbvi.py`** | **Algorithm 26 – Counterfactual UCB (driver)** | Maintains the episode loop, logs the triples *(state `s`, intent `x`, override `a`)* and their outcomes, **calls Step 7** to refresh optimism, then chooses actions greedily. |
-| **`ucbq.py`**  | **Algorithm 27 – UCB‑Q sub‑routine**           | Pure function `ucb_q(...)` that **computes Step 7**: builds optimistic Q‑ and V‑tables from empirical counts, rewards, and the exploration bonus.                             |
+This dual (or triple) use led to significant issues:
+*   If `horizon` was set high (e.g., 100, suitable for planning sweeps or a theoretical max episode length), it caused the Q-values to be clipped at a very high value and the bonus term to become excessively large. This resulted in over-optimism, where the agent could not effectively distinguish between good and bad actions until an extremely large number of visits, hindering learning.
+*   If `horizon` was set low (e.g., 1.0 or 2.0, suitable for a realistic maximum episodic reward for clipping/bonus scaling), it was then unsuitable for `range(horizon)` in the planning loop, causing TypeErrors or insufficient planning sweeps.
 
-Both files are entirely independent of Gym — pass primitive numpy arrays and call `act()` / `observe()` from your own environment wrapper.
+## 2. Decoupling `planning_sweeps` from `max_episode_reward`
 
----
+The key solution was to decouple these concepts:
 
-## 2  How the code matches the book
+*   **`planning_sweeps` (formerly `horizon` in some contexts):**
+    *   **Purpose:** Defines the number of iterations for the value iteration (Bellman backup) process within the `plan()` method of model-based algorithms like UCBVI.
+    *   **Type:** Integer.
+    *   **Typical Value:** Can be set based on the estimated diameter of the state space or the desired depth of planning (e.g., 100 for a 4x4 FrozenLake).
 
-### Exploration bonus
+*   **`max_episode_reward`:**
+    *   **Purpose:** Represents a realistic upper bound on the cumulative reward achievable in a single episode. This value is used for:
+        1.  Clipping optimistic Q-values: `Q_value = min(max_episode_reward, ...)`
+        2.  Scaling the exploration bonus: `bonus = c_bonus * max_episode_reward * sqrt(...)`
+    *   **Type:** Float.
+    *   **Typical Value:** Should be set close to the actual maximum reward the agent can get (e.g., 1.0 for FrozenLake if goal reward is +1 and no other positive rewards accumulate significantly, or slightly higher if there are small positive intermediate rewards).
 
-The bonus term used everywhere is
-$\;b(s,x,a)=\;cH\,\sqrt{\tfrac{\ln(1/\delta)}{N(s,x,a)}}\;$
-with **`c = 7`** (the constant from Azar‑Osband‑Munos, 2017).  This is precisely Eq. (9.47) preceding Alg 26.
+**Implementation Change:**
+The `UCBVI` class and the `ucb_q` function were modified. `UCBVI` now takes `horizon` (for planning sweeps) and `max_episode_reward` as separate arguments. `ucb_q` also takes these distinct parameters and uses them appropriately.
 
-### Algorithm 27 ➜ `ucbq.py`
+## 3. The `c_bonus` (Exploration Constant)
 
-* **Inputs** `C, R, H, δ` match the table in the margin of Alg 27.
-* Line 4 in the book, *“for h = H … 1”*, is the backward loop in `ucb_q`.
-* Line 6, *“Q = min{H, …}”*, is implemented with `np.minimum(H, …)`.
-* The function returns **(Q, V)** exactly as required by Alg 26 Step 7.
+*   **Purpose:** `c_bonus` scales the exploration bonus. A larger `c_bonus` leads to more optimism and exploration.
+*   **Interaction with `max_episode_reward`:** The effective exploration pressure is a result of `c_bonus * max_episode_reward`.
+*   **Effective Value:** After `max_episode_reward` was set appropriately (e.g., to 1.0 for FrozenLake), a `c_bonus` value of **1.0** was found to work well. This provided a good balance between exploration and exploitation, allowing the agent to learn effectively. Values significantly higher (e.g., the theoretical default of ~7.0) were detrimental when `max_episode_reward` was also high, but might be reconsidered if `max_episode_reward` is very small (though the primary scaling should come from `max_episode_reward` reflecting actual reward scales).
 
-### Algorithm 26 ➜ `ucbvi.py`
+## 4. Successful Configuration for FrozenLake (Non-Slippery, Wind)
 
-* **Step 3–4** (*peek intent; choose optimistic override*) → `act(s,x)`.
-* **Step 5** (*execute do(a) and observe r,s′*) → handled by user’s environment, then fed into `observe(...)`.
-* **Step 6** (update counts & rewards) → inside `observe`.
-* **Step 7** (`Q ← UCB‑Q(…)`) → the call to `ucb_q` imported from `ucbq.py`.
-* Remaining bookkeeping (episode reset, horizon handling) mirrors lines 1–2 & 8 in the text.
+The following parameter configuration for `CtfUCBDriver (UCBVI)` proved effective for the custom FrozenLake (4x4, non-slippery, with wind) environment:
 
----
+*   `planning_sweeps` (passed as `horizon` to `UCBVI`): `100`
+*   `max_episode_reward`: `1.0`
+*   `c_bonus`: `1.0`
+*   `delta`: `0.1` (failure probability for confidence bounds)
 
-## 3  Minimal usage example
+With these settings, the agent demonstrated clear learning, achieving significantly more frequent successes compared to initial configurations.
 
-```python
-from ucbvi import CounterfactualUCB
-from frozen_lake_scm import FrozenLakeSCM   # any env exposing .action() & .do()
+## 5. General Advice for Other Environments (Lunar Lander, Cartpole Wind)
 
-agent = CounterfactualUCB(S, A, H=100)
+*   **Crucial Tuning:** The `max_episode_reward` and `c_bonus` parameters are highly sensitive and crucial for good performance. They will likely need to be tuned specifically for each environment based on its reward scale and dynamics.
+*   **`max_episode_reward` Estimation:**
+    *   For **Lunar Lander:** Consider the maximum possible score. A successful landing gives +100, avoiding crashes gives points, fuel costs points. The range can be wide. A value like 100-250 might be a starting point, but this needs careful thought relative to intermediate rewards/penalties.
+    *   For **Cartpole Wind:** Reward is +1 for every step the pole is balanced. If the max episode length is 200, then `max_episode_reward` could be around 200.
+*   **`planning_sweeps`:** Should be an integer, sufficiently large for value propagation across the (discretized) state space. For larger or more complex state spaces, this might need to be higher than 100.
+*   **Discretization:** For continuous environments like Lunar Lander and Cartpole, the quality of the state discretization scheme will be paramount *before* even tuning these UCBVI parameters. If the discretization is poor, the agent won't be able to learn a good model or Q-values regardless of UCBVI parameters.
 
-for episode in range(1000):
-    agent.plan()                   # Step 7 (Alg 26)
-    s = env.reset()
-    done = False
-    while not done:
-        x_int = env.action()       # policy intent (peek only)
-        a = agent.act(s, x_int)    # override picked via optimistic Q
-        s2, r, done = env.do(a)
-        agent.observe(s, x_int, a, r, s2)
-        s = s2
-```
-
-Replace `FrozenLakeSCM` with any SCM‑style environment; only two calls are required:
-`env.action()` (see intent) and `env.do(a)` (force override).
-
----
-
-## 4  Tuning knobs
-
-* **`H`** – horizon & reward cap (default: user‑supplied).
-* **`c_bonus`** – exploration aggressiveness (default 7.0).
-* **`delta`** – confidence level (default 0.05).
-
----
-
-## 5  Limitations & next steps
-
-* Dense numpy tensors are fine for toy problems; switch to sparse for |S|·|A|² ≫ 10⁶.
-* Next‑intent distribution currently assumed uniform.  Predict or maximise if you need tighter bounds.
-* No discount factor γ; finite‑horizon formulation follows the textbook.
+By carefully setting `max_episode_reward` to reflect the true scale of rewards and then tuning `c_bonus` (starting around 1.0), exploration can be guided much more effectively. 

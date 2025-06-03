@@ -36,7 +36,8 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         is_slippery: bool = True,
         wind_probabilities: tuple[float, float, float, float, float] = (0.7, 0.075, 0.075, 0.075, 0.075), # WIND_NONE, N, E, S, W
         render_mode: Union[str, None] = None,
-        policy: Union[PolicyType,  None] = None
+        policy: Union[PolicyType,  None] = None,
+        desc: Union[list[str], None] = None  # Added optional desc parameter
     ) -> None:
         super().__init__()
         self.map_name = map_name
@@ -45,10 +46,17 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         assert sum(wind_probabilities) == 1.0, "Wind probabilities must sum to 1."
         assert len(wind_probabilities) == 5, "Wind probabilities must have 5 elements."
 
-        # Base Gymnasium environment (primarily for P, desc, action/observation spaces)
-        # We set its render_mode to "rgb_array" to avoid it trying to create its own Pygame window
-        # if our SCM is in "human" mode. Our SCM will manage its own Pygame window if needed.
-        self.env = gym.make(f"FrozenLake-v1", desc=None, map_name=map_name, is_slippery=is_slippery, render_mode="rgb_array")
+        # Base Gymnasium environment
+        # If desc is provided, use it. Otherwise, use map_name.
+        # The underlying FrozenLake-v1 will handle desc=None by using map_name,
+        # or use desc if it's a list of strings.
+        self.env = gym.make(
+            f"FrozenLake-v1", 
+            desc=desc, 
+            map_name=map_name if desc is None else None, # Pass map_name only if desc is not used
+            is_slippery=is_slippery, 
+            render_mode="rgb_array"
+        )
         
         self.nrow, self.ncol = self.env.unwrapped.nrow, self.env.unwrapped.ncol
         self.initial_state_distrib = self.env.unwrapped.initial_state_distrib
@@ -155,68 +163,104 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         return obs, info
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
-        transitions = self.P[self.agent_pos][action]
+        current_agent_state_before_step = self.agent_pos
         
-        current_row, current_col = self._to_rc(self.agent_pos)
+        current_row, current_col = self._to_rc(current_agent_state_before_step)
         wind_in_cell = self.wind_map[current_row, current_col]
-
-        intended_action = action
-        if wind_in_cell != WIND_NONE:
-            if not self.is_slippery:
-                if wind_in_cell == WIND_NORTH: intended_action = 3
-                elif wind_in_cell == WIND_EAST: intended_action = 2
-                elif wind_in_cell == WIND_SOUTH: intended_action = 1
-                elif wind_in_cell == WIND_WEST: intended_action = 0
-            else: 
-                pass 
+        
+        s_next_final = -1 # Placeholder
+        p_prob_final = 0.0 # Placeholder
+        r_original_final = 0.0 # Placeholder
+        terminated_final = False # Placeholder
+        info = {}
 
         if not self.is_slippery and wind_in_cell != WIND_NONE:
-             actual_transitions = self.P[self.agent_pos][intended_action]
-        else: 
-             actual_transitions = self.P[self.agent_pos][action]
+            # --- Two-part action: Wind first, then agent's chosen action ---
+            wind_action_code = -1
+            if wind_in_cell == WIND_NORTH: wind_action_code = 3  # UP
+            elif wind_in_cell == WIND_EAST: wind_action_code = 2  # RIGHT
+            elif wind_in_cell == WIND_SOUTH: wind_action_code = 1  # DOWN
+            elif wind_in_cell == WIND_WEST: wind_action_code = 0  # LEFT
 
-        i = self.np_random.choice(len(actual_transitions), p=[t[0] for t in actual_transitions])
-        p_prob, s_next, r_original, terminated = actual_transitions[i]
+            # 1. Apply wind action
+            wind_transitions = self.P[current_agent_state_before_step][wind_action_code]
+            idx_wind = self.np_random.choice(len(wind_transitions), p=[t[0] for t in wind_transitions])
+            _p_wind, intermediate_state, _r_wind, terminated_by_wind = wind_transitions[idx_wind]
+            
+            info['wind_action_component'] = wind_action_code
+            info['intermediate_state_after_wind'] = intermediate_state
+            info['terminated_by_wind_component'] = terminated_by_wind # Good to know if wind led to termination
+
+            # If wind itself causes termination (e.g., blows into a hole),
+            # the agent's subsequent action might be from a terminal state or irrelevant.
+            # The final state and reward should reflect this.
+            if terminated_by_wind:
+                s_next_final = intermediate_state
+                p_prob_final = _p_wind # Probability of wind's effect
+                # r_original_final will be determined by reward shaping based on s_next_final (hole)
+                terminated_final = True
+                # Agent's action is not taken if wind terminates
+                info['agent_action_component'] = None 
+            else:
+                # 2. Apply agent's chosen action from the intermediate_state
+                agent_action_transitions = self.P[intermediate_state][action] # 'action' is agent's original choice
+                idx_agent = self.np_random.choice(len(agent_action_transitions), p=[t[0] for t in agent_action_transitions])
+                p_prob_agent, s_next_agent, r_original_agent, terminated_by_agent_action = agent_action_transitions[idx_agent]
+
+                s_next_final = s_next_agent
+                p_prob_final = p_prob_agent # Prob of agent's action from intermediate state
+                r_original_final = r_original_agent # Base reward from agent's action
+                terminated_final = terminated_by_agent_action
+                info['agent_action_component'] = action
         
-        # current_pos_rc = self._to_rc(self.agent_pos) # Not needed for new reward logic
-        next_pos_rc = self._to_rc(s_next)
-        
+        else: # Standard logic: Slippery mode OR Non-slippery with NO wind
+            standard_transitions = self.P[current_agent_state_before_step][action]
+            idx_standard = self.np_random.choice(len(standard_transitions), p=[t[0] for t in standard_transitions])
+            p_prob_std, s_next_std, r_original_std, terminated_std = standard_transitions[idx_standard]
+
+            s_next_final = s_next_std
+            p_prob_final = p_prob_std
+            r_original_final = r_original_std
+            terminated_final = terminated_std
+            info['wind_action_component'] = None # No separate wind action component
+            info['agent_action_component'] = action # Agent's action was the direct one
+
+        # --- Common reward calculation and final updates based on s_next_final ---
+        next_pos_rc = self._to_rc(s_next_final)
         final_reward = 0.0
-        # Determine character of the next state for reward calculation
-        next_state_char_bytes = self.desc[next_pos_rc] # It's a numpy array of bytes
+        next_state_char_bytes = self.desc[next_pos_rc]
         next_state_char = next_state_char_bytes.item().decode('utf-8') if isinstance(next_state_char_bytes.item(), bytes) else next_state_char_bytes.item()
 
         if next_state_char == 'G':
             final_reward = 1.0
-            # Gymnasium's FrozenLake-v1 sets r_original=1 and terminated=True for Goal
+            terminated_final = True # Ensure termination if goal is reached
         elif next_state_char == 'H':
             final_reward = -1.0
-            # Gymnasium's FrozenLake-v1 sets r_original=0 and terminated=True for Hole
+            terminated_final = True # Ensure termination if hole is reached
         else:  # 'S' or 'F'
             dist_to_goal = self._manhattan_distance(next_pos_rc, self.goal_pos_rc)
             if self.max_manhattan_dist > 0:
-                # Reward is higher for smaller distances (closer to 1), normalized.
-                # Example: (6-0)/6 = 1 (at goal, but handled above), (6-1)/6 = 0.83, (6-6)/6 = 0 (furthest)
                 final_reward = (self.max_manhattan_dist - dist_to_goal) / self.max_manhattan_dist
-            else: # Should ideally not happen for valid FrozenLake maps (e.g. 1x1 'F' map)
-                final_reward = 0.0 
-            # terminated remains False for S or F states unless set by PCH logic later
+            else:
+                final_reward = 0.0
+            # if wind or agent action already set terminated_final, it remains True
 
-        self.agent_pos = s_next
-        self.lastaction = action 
+        self.agent_pos = s_next_final
+        self.lastaction = action # Store the agent's *intended* action for this step
 
-        truncated = False 
-        info = {"prob": p_prob, "action_was": action}
-        if not self.is_slippery and wind_in_cell != WIND_NONE:
-            info["wind_overrode_action_to"] = intended_action
+        truncated = False # Standard FrozenLake does not use truncation typically.
+        
+        # Populate the rest of the info dictionary
+        info["prob"] = p_prob_final
+        info["action_was_intended_by_agent"] = action # The original action parameter
         info["wind_in_cell"] = wind_in_cell
-        info["agent_pos_rc"] = self._to_rc(self.agent_pos)
-        info["original_reward"] = r_original # Keep for debugging if needed
+        info["agent_pos_rc_final"] = self._to_rc(self.agent_pos)
+        info["original_gym_reward_final_step"] = r_original_final # If needed for debugging
 
         if self.render_mode == "human":
             self.render(mode="human")
 
-        return int(s_next), final_reward, terminated, truncated, info
+        return int(s_next_final), final_reward, terminated_final, truncated, info
 
     def action(self):
         return self.policy(self.observation(), self.wind_map[self._to_rc(self.agent_pos)])

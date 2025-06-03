@@ -23,6 +23,7 @@ setup(
     extras_require={
         'dev': [
             'ipykernel',  # good for testing w/ notebooks
+            'imageio',    # for creating GIFs
         ]
     }
 )

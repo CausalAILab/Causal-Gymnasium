@@ -552,6 +552,12 @@ class HighwayMDPPCH(PCH):
 
     def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         return self.env.step(action, show_reward=show_reward)
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

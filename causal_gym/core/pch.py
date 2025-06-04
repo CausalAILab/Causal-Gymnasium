@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from .scm import SCM
 from .types import *
-from .task import Task
+from .task import Assumptions, LearningRegime, Task
 
 
 class PCH(    
@@ -31,13 +31,43 @@ class PCH(
             env: The environment to wrap
         """
         self.env: SCM
-        self._policy: WrapperPolicyType | None = None
-        self.task: Task | None = None
+        self._policy: WrapperPolicyType
+        self.task: Task = kwargs.get("task", Task())
 
         assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, Env)
         Wrapper.__init__(self, self.env)
 
+    def _permission_check(self, name):
+        """Checks if the user has the right permission. Override this method as needed."""
+        if (name == "see" and self.task.learning_regime not in [LearningRegime.see, LearningRegime.cool])\
+            or (name == "do" and self.task.learning_regime not in [LearningRegime.do, LearningRegime.cool])\
+            or (name == "ctf_do" and self.task.learning_regime not in [LearningRegime.ctf_do])\
+            or (name == "step" and self.task.assumptions not in [Assumptions.nuc, Assumptions.markov]):
+            raise PermissionError(f"You do not have permission to perform {name}(...) under task {self.task}.")
+        
 
+    def __getattribute__(self, name):
+        # List of methods to protect (skip special/private and internal attributes)
+        protected_methods = [
+            "see", "do", "ctf_do", "step"
+        ]
+        prohibited_methods = [
+            "action", "observation", "policy"
+        ]
+        # Don't allow access to dunder methods and private attributes
+        if name == "_permission_check":
+            return object.__getattribute__(self, name)
+        if name.startswith("__") or name.startswith("_"):
+            raise AttributeError(f"Access to private or protected attribute '{name}' is not allowed.")
+        if name in prohibited_methods:
+            raise PermissionError(f"You do not have permission to perform {name}(...).")
+        attr = object.__getattribute__(self, name)
+        if callable(attr) and name in protected_methods:
+            def wrapper(*args, **kwargs):
+                self._permission_check(name)
+                return attr(*args, **kwargs)
+            return wrapper
+        return attr
 
     def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.
@@ -98,6 +128,11 @@ class PCH(
                 A done signal may be emitted for different reasons: Maybe the task underlying the environment was solved successfully,
                 a certain timelimit was exceeded, or the physics simulation has entered an invalid state.
         """  
+        raise NotImplementedError
+    
+    def ctf_do(
+        self, ctf_policy: PolicyType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         raise NotImplementedError
     
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:

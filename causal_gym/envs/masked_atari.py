@@ -120,3 +120,9 @@ class MaskedAtariPCH(PCH):
     def do(self, action: ActType) -> ObsType:
         next_obs, reward, term, trunc, info = self.env.step(action)
         return next_obs, reward, term, trunc, info
+
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)

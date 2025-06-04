@@ -11,12 +11,12 @@ class LearningRegime(StrEnum):
     see = "see"
     do = "do"
     ctf_do = "ctf_do"
+    cool = "cool"
 
 
 class Assumptions(StrEnum):
     dag = "dag"
     markov = "markov"
-    iid = "iid"
     nuc = "nuc"
 
 
@@ -31,11 +31,18 @@ class Task(namedtuple('Task', ['learning_regime', 'assumptions', 'policy_space',
     __slots__ = ()
     def __new__(
         cls,
-        learning_regime: LearningRegime = LearningRegime.see,
+        learning_regime: LearningRegime = LearningRegime.do,
         assumptions: Assumptions = Assumptions.dag,
         policy_space: PolicyScope = None,
         reward_func: RewardFunc = RewardFunc.discount
     ):
+        assert learning_regime in LearningRegime.__members__.values() or learning_regime in LearningRegime, \
+            f"{learning_regime} is not a valid LearningRegime"
+        assert assumptions in Assumptions.__members__.values() or assumptions in Assumptions, \
+            f"{assumptions} is not a valid Assumptions"
+        assert reward_func in RewardFunc.__members__.values() or reward_func in RewardFunc, \
+            f"{reward_func} is not a valid RewardFunc"
+        # Leave policy scope check blank for now
         return super(Task, cls).__new__(cls, learning_regime, assumptions, policy_space, reward_func)
     
 

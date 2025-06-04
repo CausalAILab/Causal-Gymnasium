@@ -225,3 +225,9 @@ class LunarLanderPCH(PCH):
     def do(self, a: int):
         obs, r, terminated, truncated, info = self.env.step(a)
         return obs, r, terminated, truncated, info # Return 5 values
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)

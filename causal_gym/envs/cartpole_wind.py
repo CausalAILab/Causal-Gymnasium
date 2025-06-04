@@ -167,3 +167,9 @@ class CartPoleWindPCH(PCH):
     def do(self, action):
         o, r, term, trunc, info = self.env.step(action)
         return o, r, term, trunc, info
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)

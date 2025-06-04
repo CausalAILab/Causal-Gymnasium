@@ -187,6 +187,12 @@ class MNISTPCH(PCH):
 
     def do(self, action: ActType) -> Tuple[ObsType, float, bool, bool, Dict[str, Any]]:
         return self.env.step(action)
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)
 
     def reset(self, *, seed: int = None) -> Tuple[ObsType, dict]:
         return self.env.reset(seed=seed)

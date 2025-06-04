@@ -96,3 +96,9 @@ class MDPExamplePCH(PCH):
     def do(self, action):
         u1, u2, u3 = self.env.sample_u()
         return self.env.step(action, u1, u2, u3)
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)

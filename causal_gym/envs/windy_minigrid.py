@@ -390,6 +390,12 @@ class WindyMiniGridPCH(PCH):
     
     def do(self, action):
         return self.env.step(action)
+
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)
     
     def render(self):
         return self.env.render()

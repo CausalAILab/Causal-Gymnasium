@@ -504,6 +504,13 @@ class FrozenLakePCH(PCH[PolicyType, ObsType, ActType, PolicyType, ObsType, ActTy
         obs, r, terminated, truncated, info = self.env.step(action)
         return obs, r, terminated, truncated, info
 
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        return self.env.step(action)
+
+
 if __name__ == "__main__":
     import time
 

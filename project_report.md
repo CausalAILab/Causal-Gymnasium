@@ -224,7 +224,7 @@ A crucial part of applying algorithms like UCBVI effectively involves careful pa
 
 *   **Implications for Other Environments:**
     These parameters, especially `max_episode_reward` and `c_bonus`, are highly sensitive and will require specific tuning for other environments like Lunar Lander and Cartpole Wind, based on their unique reward structures and scales. For instance:
-    *   **Lunar Lander:** `max_episode_reward` might be in the range of 100-250, given its scoring.
+    *   **Lunar Lander:** `max_episode_reward` might be in the range of 100-250, given its scoring. The Gymnasium documentation notes: "Reward for moving from the top of the screen to the landing pad and coming to rest is about 100-140 points. If the lander moves away from the landing pad, it loses reward. If the lander crashes, it receives an additional -100 points. If it comes to rest, it receives an additional +100 points. Each leg with ground contact is +10 points. Firing the main engine is -0.3 points each frame. Firing the side engine is -0.03 points each frame. Solved is 200 points." This rich, shaped reward structure means the total episodic reward can exceed the +100 from a successful landing alone. Initial runs with `max_episode_reward=250.0` (reflecting this higher potential total reward), `planning_sweeps=100`, `c_bonus=1.0`, and an improved discretization (1728 states including position, velocity, angle, and angular velocity) over 1000 episodes show that while the agent explores and the average total episodic reward shows a slight upward trend from highly negative values, consistent positive rewards or successful landings have not yet been achieved. This underscores the significant challenge of this environment for tabular UCBVI, likely necessitating more extensive training, further refinements in state representation, or different algorithmic approaches.
     *   **Cartpole Wind:** If max episode length is 200 and reward is +1 per step, `max_episode_reward` could be near 200.
     The quality of state discretization for these continuous environments is also a critical precursor to successful learning with tabular UCBVI.
 
@@ -336,4 +336,24 @@ This subsection details how the UCBVI and UCBQ algorithms are applied to the cus
                 f.  `agent.update(s, x_int, a, r, s_n)`.
             4.  `agent.plan(num_sweeps=PLAN_SWEEPS)` is called periodically (e.g., every `PLAN_PERIOD = 3` episodes) to update Q-values.
         *   **Metrics & Outputs:**
-            *   A baseline success probability (`p_int`) is established by always taking a fixed action (e.g., `NOOP=0`) interventionally (`env.do(0)`
+            *   A baseline success probability (`p_int`) is established by always taking a fixed action (e.g., `NOOP=0`) interventionally (`env.do(0)`).
+            *   **Current Status & Expected Outcome:** UCBVI is expected to learn a policy that improves its success rate. The LunarLander environment provides shaped rewards: positive for approaching the pad, slowing down, and leg contact; negative for fuel usage, plus a terminal +100 for safe landing or -100 for crashing. "Reward for moving from the top of the screen to the landing pad and coming to rest is about 100-140 points... Solved is 200 points." (Gymnasium documentation). However, experiments with up to 1000 episodes, using a 1728-state discretization (including x, y, vx, vy, theta, omega) and tuned parameters (`max_episode_reward=250.0`, `c_bonus=1.0`), show that while the average total episodic reward trends slightly upwards from very negative values, the agent still predominantly crashes and has not achieved consistent positive rewards or successful landings. This indicates that more sophisticated state representations, significantly more training episodes, or alternative algorithms may be needed for this complex environment.
+
+    *   **Cartpole Wind with UCBVI/UCBQ (from `test/test_cartpole_algos.ipynb`):**
+        *   **(Note: This notebook was previously missing/corrupted. The following describes the intended test setup based on inferences and common practices.)**
+        *   **Objective:** Train UCBVI/UCBQ to balance the pole for as long as possible.
+        *   **Process:**
+            1.  An instance of `CartPoleWindPCH` is created.
+            2.  A `UCBVI` agent is initialized with parameters appropriate for the environment.
+            3.  The learning loop is similar to FrozenLake's UCBVI:
+                a.  Get `intended_action (x_int)` via `env.see()`.
+                b.  Discretize current observation to state `s`.
+                c.  UCBVI agent chooses `a = agent.act(s, x_int)`.
+                d.  Execute `a` via `env.do(a)`.
+                e.  Discretize next observation to `s_n`.
+                f.  `agent.update(s, x_int, a, r, s_n)`.
+            4.  `agent.plan(num_sweeps=PLAN_SWEEPS)` is called periodically (e.g., every `PLAN_PERIOD = 3` episodes) to update Q-values.
+        *   **Metrics & Outputs:**
+            *   The script collects statistics like the average total reward per episode.
+            *   The script outputs the final average total reward.
+        *   **Expected Outcome:** UCBVI/UCBQ is expected to learn a policy that improves its average total reward over time.

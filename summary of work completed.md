@@ -10,6 +10,7 @@ Causal diagram?
 Continuous environment
 Exposes a discrete interface for learning algos
 Implements wind on a grid basis
+Learning with UCBVI remains challenging even with improved discretization (1728 states including x, y, vx, vy, theta, omega) and tuned parameters (`max_episode_reward=250.0`, `c_bonus=1.0`). Runs up to 1000 episodes show a slight upward trend in average total episodic reward but no consistent successful landings yet.
 
 **Cartpole Wind (continuous)**
 Continuous, exposes discrete
@@ -22,7 +23,7 @@ UCBQ
 Standard algorithms 26 and 27 from 9.4 of the textbook.
 Intercepts next action with env.action(), determines next action w/ ucbq, takes the action w/ env.do(), updates ucbq.
 Existing action can be anything, as per the textbook, but should cover all actions. Uniform distribution assists w/ exploration, ok and simple to use.
-**Key Finding:** Crucial parameters for UCBVI (planning horizon vs. reward scaling horizon, `c_bonus`) were identified and tuned, significantly improving learning on FrozenLake. These will need careful per-environment tuning for Cartpole and Lunar Lander.
+**Key Finding:** Crucial parameters for UCBVI (planning horizon vs. reward scaling horizon, `c_bonus`) were identified and tuned, significantly improving learning on FrozenLake. Applying these insights to more complex continuous environments like LunarLander is non-trivial; while showing some improvement, it highlights further challenges related to state representation and exploration depth for tabular methods.
 
 # Testing
 
@@ -42,7 +43,7 @@ Shows a successful run, when the run was first successful, regret over time, etc
 Tests different discretizations of the env
 Outputs successful run example
 Shows regret
-Difficult b/c of continuous env, can take a while to learn
+Difficult b/c of continuous env, can take a while to learn. Current UCBVI tests (1000 episodes, 1728 states) show slow progress, with average rewards improving but still largely negative and no consistent landings.
 
 **Cartpole Wind**
 Also tests discretizations, successful run, regret

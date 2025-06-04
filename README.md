@@ -2,7 +2,7 @@
 
 ## Overview
 
-**CausalGym** is a Python library designed for developing and testing custom reinforcement learning environments with a particular focus on incorporating causal structures and confounders. It provides a framework for creating Structural Causal Model (SCM) based environments and their corresponding Probabilistic Causal Hacked (PCH) versions, facilitating research in causal reinforcement learning.
+**CausalGym** is a Python library designed for developing and testing custom reinforcement learning environments with a particular focus on incorporating causal structures and confounders. It provides a framework for creating Structural Causal Model (SCM) based environments and their corresponding Pearl Causal Hierarchy (PCH) versions, facilitating research in causal reinforcement learning.
 
 This repository contains the core CausalGym library.
 
@@ -27,7 +27,7 @@ CausalGym hosts several custom environments, primarily within its `causal_gym/en
 ## Learning Algorithms
 
 CausalGym environments are designed to be used with various reinforcement learning algorithms.
-*   **Core Implementations**: The `causal_gym/algorithms/` directory is intended for implementations of algorithms like UCBVI (Upper Confidence Bound Value Iteration) and UCBQ (Upper Confidence Bound Q-learning) that are part of the CausalGym library.
+*   **Core Implementations**: The `causal_gym/algorithms/` directory is intended for implementations of algorithms like UCBVI (Upper Confidence Bound Value Iteration) and UCBQ (optimistic Q-builder) that are part of the CausalGym library.
 *   **User-Defined Algorithms**: Users can develop their own algorithm scripts (e.g., a `linear_ucbvi.py` for specific experiments) that interface with CausalGym's environments.
 
 ## Navigating the CausalGym Repository
@@ -83,7 +83,7 @@ CausalGym environments are designed to be used with various reinforcement learni
 
 # CausalGym PCH Environments: FrozenLake and CartPoleWind
 
-This document provides an overview of two PCH (Probabilistic Causal Model Hosted) environments available in this CausalGym setup: `FrozenLakePCH` and `CartPoleWindPCH`. It details their mechanics, latent variables, and how to interact with them using the `see()` and `do()` methods.
+This document provides an overview of two PCH (Pearl Causal Hierarchy) environments available in this CausalGym setup: `FrozenLakePCH` and `CartPoleWindPCH`. It details their mechanics, latent variables, and how to interact with them using the `see()` and `do()` methods.
 
 ## General PCH Interaction
 

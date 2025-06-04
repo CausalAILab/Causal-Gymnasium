@@ -344,7 +344,7 @@ This subsection details how the UCBVI and UCBQ algorithms are applied to the cus
         *   **Objective:** Train UCBVI/UCBQ to balance the pole for as long as possible.
         *   **Process:**
             1.  An instance of `CartPoleWindPCH` is created.
-            2.  A `UCBVI` agent is initialized with parameters appropriate for the environment.
+            2.  A `UCBVI` agent is initialized with parameters appropriate for the environment (e.g., `num_states=875` based on a 5x5x7x5 discretization of cart position, cart velocity, pole angle, and pole angular velocity; `n_actions=2`). Key algorithm parameters used are `planning_sweeps=100`, `max_episode_reward=200.0`, and `c_bonus=1.0`.
             3.  The learning loop is similar to FrozenLake's UCBVI:
                 a.  Get `intended_action (x_int)` via `env.see()`.
                 b.  Discretize current observation to state `s`.
@@ -354,6 +354,24 @@ This subsection details how the UCBVI and UCBQ algorithms are applied to the cus
                 f.  `agent.update(s, x_int, a, r, s_n)`.
             4.  `agent.plan(num_sweeps=PLAN_SWEEPS)` is called periodically (e.g., every `PLAN_PERIOD = 3` episodes) to update Q-values.
         *   **Metrics & Outputs:**
-            *   The script collects statistics like the average total reward per episode.
-            *   The script outputs the final average total reward.
+            *   The script collects statistics like the average total reward per episode and generates a plot of total episodic rewards over time.
+            *   It also attempts to save a GIF of the first episode where the agent successfully balances the pole for the maximum duration (`max_episode_steps=200`).
         *   **Expected Outcome:** UCBVI/UCBQ is expected to learn a policy that improves its average total reward over time.
+        *   **Current Status (UCBVI):**
+            Initial runs of UCBVI for 2000 episodes on CartPoleWind with the aforementioned discretization (875 states) and parameters (`max_episode_reward=200.0`, `planning_sweeps=100`, `c_bonus=1.0`) show the agent learns to balance the pole for short durations. The 50-episode moving average for the total reward per episode hovers between approximately 20 and 30. This is significantly better than random actions, which would likely result in the pole falling very quickly (average rewards much lower, typically less than 10-15 for the standard CartPole before modifications).
+
+            However, the agent is not mastering the task:
+            *   The maximum possible reward is 200 (since `max_episode_steps = 200` and reward is +1 per step). The agent's performance is far from this.
+            *   The console output from the 2000-episode run confirmed that no episode reached the maximum 200 steps.
+            *   While there are spikes in individual episode rewards (some reaching up to ~90), the moving average does not show a strong, sustained upward trend towards 200.
+
+            This behavior suggests several factors:
+            1.  **Partial Learning:** The agent has learned a policy that is demonstrably better than random and can balance the pole for a limited duration, accumulating some reward.
+            2.  **Challenge of Per-Step Wind:** The CartPoleWind environment introduces wind as a direct modification to the cart's velocity at each step. This constantly changing disturbance is a significant challenge for the agent to learn to counteract effectively, making it more difficult than environments with static or slowly changing latent variables.
+            3.  **Parameter Sensitivity and Discretization:**
+                *   The current discretization (875 states from 5x5x7x5 bins for cart position, cart velocity, pole angle, and pole angular velocity) might still be too coarse to capture the critical nuances of CartPole dynamics, especially when perturbed by continuous wind. The choice of bin boundaries and the number of bins for each of the four continuous variables are critical.
+                *   While the UCBVI parameters (`max_episode_reward=200.0`, `planning_sweeps=100`, `c_bonus=1.0`) were selected based on insights from FrozenLake, they might require further specific tuning for CartPoleWind's distinct dynamics and reward structure.
+            4.  **Exploration vs. Exploitation Balance:** The agent might still be in a phase where the UCB exploration bonus encourages deviation from the best-known policy, preventing consistent exploitation of partially learned good strategies, or the Q-values may not have converged sufficiently.
+            5.  **Number of Episodes:** The 2000 episodes run might not be adequate for the agent to thoroughly explore the 875-state space and converge to a near-optimal policy in this more dynamic and challenging version of CartPole.
+
+            In summary, while the current parameter settings and discretization allow for clear partial learning, mastering CartPoleWind with UCBVI will likely necessitate more extensive training (more episodes), potentially a finer-grained or more adaptively chosen state discretization, and possibly further specific tuning of algorithm parameters like `c_bonus` or `planning_sweeps` to better suit the environment's unique per-step wind dynamics.

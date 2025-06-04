@@ -59,3 +59,23 @@ With these settings, the agent demonstrated clear learning, achieving significan
 *   **Discretization:** For continuous environments like Lunar Lander and Cartpole, the quality of the state discretization scheme will be paramount *before* even tuning these UCBVI parameters. If the discretization is poor, the agent won't be able to learn a good model or Q-values regardless of UCBVI parameters.
 
 By carefully setting `max_episode_reward` to reflect the true scale of rewards and then tuning `c_bonus` (starting around 1.0), exploration can be guided much more effectively. 
+
+## 6. Initial Configuration for CartPoleWind
+
+A new learning visualization script, `.important/test_cartpole_ucbvi_learning_viz.py`, has been created for the `CartPoleWind` environment. The following initial parameters and discretization strategy are used:
+
+*   **`max_episode_reward`**: `200.0` (derived from `max_episode_steps = 200` in `CartPoleWindSCM`, with a reward of +1 per step).
+*   **`N_ACTIONS`**: 2 (Push cart left or right).
+*   **`planning_sweeps`** (passed as `horizon` to `UCBVI`): `100`.
+*   **`c_bonus`**: `1.0`.
+*   **`delta`**: `0.1`.
+*   **Discretization Strategy (`discretize_cartpole`)**:
+    *   Observation space: `[cart_position, cart_velocity, pole_angle, pole_angular_velocity]`.
+    *   Cart Position (`x`): 5 bins over `[-2.4, 2.4]`.
+    *   Cart Velocity (`x_dot`): 5 bins over `[-2.0, 2.0]`.
+    *   Pole Angle (`theta`): 7 bins over `[-0.2095, 0.2095]` radians (approx. +/- 12 degrees).
+    *   Pole Angular Velocity (`theta_dot`): 5 bins over `[-2.0, 2.0]` radians/sec.
+*   **Resulting `NUM_STATES`**: `5 * 5 * 7 * 5 = 875`.
+*   **Initial `N_EPISODES` for testing**: `2000`.
+
+The script will output a GIF of the first episode that successfully runs for the full `MAX_EPISODE_STEPS` and a plot of total episodic rewards. These will help assess the learning performance with this initial configuration. 

@@ -47,6 +47,7 @@ Difficult b/c of continuous env, can take a while to learn. Current UCBVI tests 
 
 **Cartpole Wind**
 Also tests discretizations, successful run, regret
+Initial UCBVI tests (2000 episodes, 875 states created from 5x5x7x5 binning for 4 continuous variables, `max_episode_reward=200.0`, `c_bonus=1.0`) show the agent learns to balance the pole for short durations (average total episodic reward ~20-30), significantly better than random. However, it does not consistently reach the maximum episode length (200 steps), indicating that further tuning, more episodes, or refined discretization may be needed to master the per-step wind challenge.
 
 
 Summary

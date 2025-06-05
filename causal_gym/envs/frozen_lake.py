@@ -4,7 +4,7 @@ import numpy as np
 import pygame
 
 from typing import Union
-from ..core import SCM, PCH
+from ..core import SCM, PCH, Task
 from ..core.types import PolicyType, ObsType, ActType
 
 
@@ -499,8 +499,9 @@ class FrozenLakePCH(PCH[PolicyType, ObsType, ActType, PolicyType, ObsType, ActTy
     metadata = FrozenLakeSCM.metadata
 
     def __init__(self, **kwargs):
+        task = kwargs.pop("task", Task())
         self.env = FrozenLakeSCM(**kwargs)
-        super().__init__(env=self.env)
+        super().__init__(env=self.env, task=task)
 
     def see(self):
         a = self.env.action()

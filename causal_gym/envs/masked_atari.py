@@ -3,7 +3,7 @@ import gymnasium as gym
 import numpy as np
 from typing import Callable
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task
 
 def obs_mask(env_name: str) -> Callable:
     if env_name == "Pong":
@@ -101,7 +101,7 @@ class MaskedAtariSCM(SCM):
 
 class MaskedAtariPCH(PCH):
     metadata = {"render_modes": ["rgb_array"]}
-    def __init__(self, env_name: str, policy: PolicyType = None):
+    def __init__(self, env_name: str, policy: PolicyType = None, task: Task = Task()):
         self.env: MaskedAtariSCM = MaskedAtariSCM(env_name, policy)
         
         # Ensure the observation space is compatible with the mask
@@ -109,7 +109,7 @@ class MaskedAtariPCH(PCH):
             raise ValueError("MaskedAtariPCH only supports Box observation spaces.")
         
         self.observation_space = self.env.observation_space
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self):
         action = self.env.action()

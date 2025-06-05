@@ -3,7 +3,7 @@ import numpy as np
 
 from causal_gym import SCM, PCH
 from causal_gym.core.causal_graph import CausalGraph
-from causal_gym.core import PolicyType, ActType, ObsType
+from causal_gym.core import PolicyType, ActType, ObsType, Task
 
 class MDPExampleSCM(SCM):
     """
@@ -103,9 +103,9 @@ class MDPExampleSCM(SCM):
 class MDPExamplePCH(PCH):
     """PCH for the MDP Example defined above.
     """
-    def __init__(self, init_dist=[.5,.5], max_step=30):
+    def __init__(self, init_dist=[.5,.5], max_step=30, task:Task=Task()):
         self.env = MDPExampleSCM(init_dist, max_step)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self):
         u1, u2, u3 = self.env.sample_u()

@@ -16,7 +16,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..core import SCM, PCH
+from ..core import SCM, PCH, Task
 from ..core.types import ObsType, ActType, PolicyType
 
 # =============================================================
@@ -161,8 +161,9 @@ class CartPoleWindPCH(PCH):
     """PCH helper for CartPole with wind."""
 
     def __init__(self, **kwargs):
+        task = kwargs.pop("task", Task())
         self.env = CartPoleWindSCM(**kwargs)
-        super().__init__(env=self.env)  # Pass the created env to the PCH constructor
+        super().__init__(env=self.env, task=task)  # Pass the created env to the PCH constructor
 
     # Observational step under behaviour policy
     def see(self):

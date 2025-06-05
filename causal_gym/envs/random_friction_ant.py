@@ -1,7 +1,7 @@
 import numpy as np
 import gymnasium as gym
 
-from ..core import SCM, PCH
+from ..core import SCM, PCH, Task
 
 ANT_GEOM_ID_NAME_MAPPING = {
     3: 'left_leg_geom',
@@ -129,6 +129,7 @@ class RandomFrictionAntMujocoPCH(PCH):
         policy=None, 
         **kwargs
     ):
+        task = kwargs.pop("task", Task())
         self.env: RandomFrictionAntMujocoSCM = RandomFrictionAntMujocoSCM(
             target_geom_ids,
             env_id=env_id,
@@ -141,7 +142,7 @@ class RandomFrictionAntMujocoPCH(PCH):
         if not isinstance(self.env.observation_space, gym.spaces.Box):
             raise ValueError("RandomFrictionMujocoPCH only supports Box observation spaces.")
         
-        super().__init__()
+        super().__init__(task=task)
         
     def see(self):
         action = self.env.action()

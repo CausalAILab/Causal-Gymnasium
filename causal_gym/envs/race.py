@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType
+from causal_gym.core import ObsType, ActType, Task
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -356,10 +356,21 @@ class RacePCH(PCH):
         3. 'imitator' = hide fog and indicator
     '''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', u_prob: float = 0.2, d_prob: float = 0.5, w_probs: List[float] = [0.5, 0.4, 0.3, 0.2]):
+    def __init__(
+        self, 
+        num_steps: int = 3, 
+        config: Dict[str, Any] = None, 
+        seed: int = None, 
+        render_mode = 'human', 
+        perception = 'truth', 
+        u_prob: float = 0.2, 
+        d_prob: float = 0.5, 
+        w_probs: List[float] = [0.5, 0.4, 0.3, 0.2],
+        task: Task = Task()
+    ):
         # initialize underlying SCM
         self.env: RaceSCM = RaceSCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, u_prob=u_prob, d_prob=d_prob, w_probs=w_probs)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         D = self.env._D

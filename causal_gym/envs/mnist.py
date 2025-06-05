@@ -2,7 +2,7 @@ import numpy as np
 from typing import Any, Tuple, Dict
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType, PolicyType
+from causal_gym.core import ObsType, ActType, PolicyType, Task
 from gymnasium import spaces
 
 from torchvision.datasets import MNIST
@@ -166,9 +166,9 @@ class MNISTSCM(SCM):
 class MNISTPCH(PCH):
     '''PCH wrapper for MNISTSCM.'''
 
-    def __init__(self, seed: int = None):
+    def __init__(self, seed: int = None, task: Task = Task()):
         self.env: MNISTSCM = MNISTSCM(seed=seed)  # Ensure env is set before base class init
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy = None) -> Tuple[ActType, ObsType, float, bool, bool, Dict[str, Any]]:
         if behavioral_policy is not None:

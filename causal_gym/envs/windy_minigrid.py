@@ -15,7 +15,7 @@ from minigrid.utils.rendering import (
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task
 from .constants import WIND_ICONS, COIN_IMG, FLAG_IMG, ROBO_IMG
 
 
@@ -341,10 +341,17 @@ class WindyMiniGridPCH(PCH):
     """PCH for WindyMiniGridSCM.
     """
 
-    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: Union[tuple, Callable] = WIND_DIST):
+    def __init__(
+        self, 
+        env: MiniGridEnv, 
+        policy:PolicyType = None, 
+        show_wind: bool = False, 
+        wind_dist: Union[tuple, Callable] = WIND_DIST,
+        task: Task = Task()
+    ):
         self.env = WindyMiniGridSCM(env, policy, show_wind, wind_dist)
         self.state_space = [env.unwrapped.width, env.unwrapped.height]
-        PCH.__init__(self)
+        super().__init__(task=task)
         # print(getattr(self, 'state_space'))
 
     def __getattr__(self, name: str) -> Any:

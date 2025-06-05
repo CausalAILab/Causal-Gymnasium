@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType
+from causal_gym.core import ObsType, ActType, Task
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -536,10 +536,22 @@ class HighwayMDPPCH(PCH):
         3. 'imitator' = hide fog and indicator
     '''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(
+        self, 
+        num_steps: int = 3, 
+        config: Dict[str, Any] = None, 
+        seed: int = None, 
+        render_mode = 'human', 
+        perception = 'truth', 
+        l_dist: List[float] = [0.2, 0.6, 0.2], 
+        u_prob: float = 0.2,
+        i_prob: float = 0.9, 
+        w_probs: List[float] = [0.9, 0.6, 0.4, 0.1], 
+        task: Task = Task()
+    ):
         # initialize underlying SCM
         self.env: HighwayMDPSCM = HighwayMDPSCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         X = self.env.X

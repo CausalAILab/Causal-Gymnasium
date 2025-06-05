@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Tuple, Dict
 
-from causal_gym import SCM, PCH
+from causal_gym.core import SCM, PCH, Task
 from causal_gym.core import ObsType, ActType
 import gymnasium as gym
 from gymnasium import spaces
@@ -220,10 +220,10 @@ class HighwaySingleStepSCM(SCM):
 class HighwaySingleStepPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''
 
-    def __init__(self, config: Dict[str, Any] = None, seed: int = None):
+    def __init__(self, config: Dict[str, Any] = None, seed: int = None, task: Task = Task()):
         # initialize underlying SCM
         self.env: HighwaySingleStepSCM = HighwaySingleStepSCM(config=config, seed=seed)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         x = self.env.x

@@ -92,21 +92,29 @@ class RandomFrictionAntMujocoSCM(SCM):
     def action(self):
         return self.policy(self.current_obs)    
     
+    # Causal graph -------------------------------------------------------
     @property
     def get_graph(self):
-        nodes = {0: "Friction(U)", 1: "State(S)", 2: "Action(X)", 3: "Reward(Y)", 4: "Next_State(S')"}
-        base = [[0] * 5 for _ in range(5)]
-        base[0][2] = 1  # U → X
-        base[0][4] = 1  # U → S'
-        base[1][2] = 1  # S → X
-        base[1][3] = 1  # S → Y
-        base[2][3] = 1  # X → Y
-        base[1][4] = 1  # S → S'
-        base[2][4] = 1  # X → S'
-        conf = [[0] * 5 for _ in range(5)]
-        conf[2][4] = 1
-        conf[4][2] = 1
-        return nodes, base, conf
+        nodes = [
+            # {'name': 'U', 'label': 'Friction', 'type': 'latent'},
+            {'name': 'S', 'label': 'State'},
+            {'name': 'X', 'label': 'Action'},
+            {'name': 'Y', 'label': 'Reward'},
+            {'name': "S'", 'label': 'Next State'}
+        ]
+
+        edges = [
+            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
+            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'S', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'X', 'to_': "S'", 'type_': 'directed'},
+            # Bidirected confounding between Action and Next State
+            {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
+        ]
+        return nodes, edges
 
 
 class RandomFrictionAntMujocoPCH(PCH):
@@ -148,4 +156,6 @@ class RandomFrictionAntMujocoPCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info

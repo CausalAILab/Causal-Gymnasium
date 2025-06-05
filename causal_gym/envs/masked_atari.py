@@ -67,37 +67,36 @@ class MaskedAtariSCM(SCM):
         action = self.policy(self.current_full_obs)
         return action
     
+    # Causal graph -------------------------------------------------------
     @property
     def get_graph(self):
-        nodes = {
-            0: "Masked Portion (O_m)", 
-            1: "Unmasked Portion (O)", 
-            2: "Action(X)", 
-            3: "Reward(Y)", 
-            4: "State(S)", 
-            5: "Next State(S')"
-        }
-        # The base graph structure for the Atari environment
-        base = [[0] * 6 for _ in range(6)]  # Updated to accommodate the new node
-        base[4][0] = 1  # S → O_m
-        base[4][1] = 1  # S → O
-        base[0][2] = 1  # O_m → X, natural regime can see
-        base[1][2] = 1  # O → X
-        base[4][3] = 1  # S → Y
-        base[2][3] = 1  # X → Y
-        base[4][5] = 1  # O → S'
-        base[2][5] = 1  # X → S'
-        conf = [[0] * 6 for _ in range(6)]  # Updated to accommodate the new node
-        # X and S'
-        conf[2][5] = 1
-        conf[5][2] = 1
-        # Y and S'
-        conf[3][5] = 1
-        conf[5][3] = 1
-        # X and Y
-        conf[2][3] = 1
-        conf[3][2] = 1
-        return nodes, base, conf
+        nodes = [
+            # {'name': 'U', 'label': 'Confounder', 'type': 'latent'},
+            {'name': 'O_m', 'label': 'Masked Portion'},
+            {'name': 'O', 'label': 'Unmasked Portion'},
+            {'name': 'X', 'label': 'Action'},
+            {'name': 'Y', 'label': 'Reward'},
+            {'name': 'S', 'label': 'State'},
+            {'name': "S'", 'label': 'Next State'}
+        ]
+
+        edges = [
+            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
+            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'O_m', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'O', 'type_': 'directed'},
+            {'from_': 'O_m', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'O', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'S', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'X', 'to_': "S'", 'type_': 'directed'},
+            # Bidirected confounding between Action and Next State
+            {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'},
+            {'from_': 'Y', 'to_': "S'", 'type_': 'bidirected'},
+            {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
+        ]
+        return nodes, edges
     
 
 class MaskedAtariPCH(PCH):
@@ -125,4 +124,6 @@ class MaskedAtariPCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info

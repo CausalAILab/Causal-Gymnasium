@@ -136,31 +136,27 @@ class MNISTSCM(SCM):
             plt.close(fig)
         else:
             raise ValueError(f'Unknown render mode: {render_mode}. Please choose "human" or "rgb_array".')
-
+    
+    # Causal graph -------------------------------------------------------
     @property
-    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        nodes = {
-            0: 'X',
-            1: 'W',
-            2: 'S',
-            3: 'Y'
-        }
-
-        base_graph = [
-            [0, 1, 0, 0],  # X
-            [0, 0, 1, 0],  # W
-            [0, 0, 0, 1],  # S
-            [0, 0, 0, 0],  # Y
+    def get_graph(self):
+        nodes = [
+            {'name': 'X', 'label': ''},
+            {'name': 'W', 'label': ''},
+            {'name': 'S', 'label': ''},
+            {'name': 'Y', 'label': ''}
         ]
 
-        conf_graph = [
-            [0, 0, 1, 0],  # X
-            [0, 0, 0, 0],  # W
-            [1, 0, 0, 0],  # S
-            [0, 0, 0, 0],  # Y
+        edges = [
+            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
+            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'X', 'to_': 'W', 'type_': 'directed'},
+            {'from_': 'W', 'to_': 'S', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
+            # Bidirected confounding between Action and Next State
+            {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-
-        return nodes, base_graph, conf_graph
+        return nodes, edges
     
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -192,7 +188,9 @@ class MNISTPCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[ObsType, dict]:
         return self.env.reset(seed=seed)

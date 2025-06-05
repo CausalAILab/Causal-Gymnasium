@@ -72,11 +72,31 @@ class MDPExampleSCM(SCM):
         # Return next state, reward, terminated, truncated, info
         return self.s, self.y, False, self.num_step > self._max_step, {}
     
-    def get_graph():
-        cdag = CausalGraph({'S_i','X_i','S_{i-1}','X_{i-1}','Y'},
-                           [('S_{i-1}','S_i'),('X_{i-1}','S_i'),('S_i','X_i'),('S_i','Y'),('X_i','Y')],
-                           [('S_i','X_{i-1}','U_{i-1,1}'),('S_i','X_{i-1}','U_{i-1,1}')])
-        return cdag.nx_viz()
+    # Causal graph -------------------------------------------------------
+    @property
+    def get_graph(self):
+        nodes = [
+            # {'name': 'U', 'label': 'Confounder', 'type': 'latent'},
+            {'name': 'S', 'label': 'State'},
+            {'name': 'X', 'label': 'Action'},
+            {'name': 'Y', 'label': 'Reward'},
+            {'name': "S'", 'label': 'Next State'}
+        ]
+
+        edges = [
+            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
+            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'S', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'X', 'to_': "S'", 'type_': 'directed'},
+            # Bidirected confounding between Action and Next State
+            {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'},
+            {'from_': 'Y', 'to_': "S'", 'type_': 'bidirected'},
+            {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
+        ]
+        return nodes, edges
 
     
 
@@ -101,4 +121,6 @@ class MDPExamplePCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info

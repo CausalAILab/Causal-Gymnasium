@@ -68,6 +68,18 @@ class PCH(
                 return attr(*args, **kwargs)
             return wrapper
         return attr
+    
+    def __getattr__(self, name: str) -> Any:
+        if name == "_np_random":
+            raise AttributeError(
+                "Can't access `_np_random` of a wrapper, use `self.unwrapped._np_random` or `self.np_random`."
+            )
+        elif name.startswith("_"):
+            raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+        if hasattr(self.env, name):
+            return getattr(self.env, name)
+        else:
+            return self.env.__getattr__(name)
 
     def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.

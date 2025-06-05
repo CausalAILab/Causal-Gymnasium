@@ -332,7 +332,15 @@ class RaceSCM(SCM):
             base_graph[h1][h2] = 1
             base_graph[x1][h2] = 1
 
-        return nodes, base_graph, conf_graph
+        nodes = [{'name': n} for n in nodes.values()]
+        edges = []
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if base_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
+                if conf_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
+        return nodes, edges
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -374,7 +382,9 @@ class RacePCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

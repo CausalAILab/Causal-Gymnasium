@@ -188,39 +188,34 @@ class HighwaySingleStepSCM(SCM):
             draw.rectangle((x - 3*r, y - r, x - 2*r, y + r), fill=(255, 100, 0), outline=(255, 100, 0))
 
         return np.array(img)
-
+    
     @property
-    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        # R-66 Fig 4a
-        nodes = {
-            0: 'X',
-            1: 'Z',
-            2: 'L',
-            3: 'W',
-            4: 'Y'
-        }
-
-        base_graph = [
-            [0, 0, 0, 0, 1],  # X
-            [1, 0, 0, 0, 1],  # Z
-            [1, 0, 0, 1, 0],  # L
-            [0, 0, 0, 0, 0],  # W
-            [0, 0, 0, 0, 0],  # Y
+    def get_graph(self) -> Tuple[list[dict], list[dict]]:
+        # Annotated format: nodes as dicts with 'name', 'label', 'type' (optional)
+        # edges as dicts with 'from_', 'to_', 'type_' ('directed' or 'bidirected')
+        nodes = [
+            {'name': 'X', 'label': 'Ego Velocity'},
+            {'name': 'Z', 'label': 'Front Car Velocity'},
+            {'name': 'L', 'label': 'Front Car Tail Light'},
+            {'name': 'W', 'label': 'Left Car Braking'},
+            {'name': 'Y', 'label': 'Latent Reward'}
         ]
 
-        conf_graph = [
-            [0, 0, 0, 0, 0],  # X
-            [0, 0, 0, 0, 0],  # Z
-            [0, 0, 0, 0, 0],  # L
-            [0, 0, 0, 0, 1],  # W
-            [0, 0, 0, 1, 0],  # Y
+        edges = [
+            {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'Z', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'Z', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'L', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'L', 'to_': 'W', 'type_': 'directed'},
+            {'from_': 'Y', 'to_': 'W', 'type_': 'bidirected'},
         ]
 
-        return nodes, base_graph, conf_graph
+        return nodes, edges
     
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
         return ['X', 'Z', 'W'], ['L', 'Y']
+
 
 class HighwaySingleStepPCH(PCH):
     '''PCH wrapper for the HighwaySCM env'''
@@ -251,7 +246,9 @@ class HighwaySingleStepPCH(PCH):
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        return action, obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

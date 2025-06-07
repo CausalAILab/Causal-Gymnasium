@@ -1,5 +1,9 @@
 from __future__ import annotations
-from enum import IntEnum, StrEnum
+import sys
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 from collections import namedtuple

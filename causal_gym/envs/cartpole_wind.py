@@ -16,6 +16,8 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
+from ..core.graph import Graph
+
 from ..core import SCM, PCH, Task
 from ..core.types import ObsType, ActType, PolicyType
 
@@ -151,7 +153,9 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
 
 # =============================================================

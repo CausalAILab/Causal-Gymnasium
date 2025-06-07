@@ -135,7 +135,6 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
     @property
     def get_graph(self):
         nodes = [
-            # {'name': 'U', 'label': 'Wind', 'type': 'latent'},
             {'name': 'S', 'label': 'State'},
             {'name': 'X', 'label': 'Action'},
             {'name': 'Y', 'label': 'Reward'},
@@ -143,8 +142,6 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
         ]
 
         edges = [
-            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
-            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
             {'from_': 'S', 'to_': 'X', 'type_': 'directed'},
             {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
             {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},

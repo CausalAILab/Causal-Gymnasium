@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 
 from collections import namedtuple
-from gymnasium import Env, Wrapper
+from gymnasium import Env, Wrapper, Space
 if TYPE_CHECKING:
     from gymnasium.envs.registration import EnvSpec, WrapperSpec
 
@@ -341,6 +341,7 @@ class ActionPCHWrapper(
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the action wrapper."""
+        self.action_space: Space
         PCHWrapper.__init__(self, env)
 
     def step(

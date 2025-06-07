@@ -44,10 +44,24 @@ class MiniGridActionRemapWrapper(ActionPCHWrapper):
             env: Environment to be wrapped.
         """
         assert isinstance(env, WindyMiniGridPCH),f"This only works with WindyMiniGridPCH, not '{type(env)}'"
-        ActionPCHWrapper.__init__(self, env)
         self.env = env
         self.actions = Actions
-        self.action_space = spaces.Discrete(len(self.actions))
+        self.wrapped_action_space = spaces.Discrete(len(self.actions))
+        super().__init__(env)
+
+    # @property
+    # def action_space(self):
+    #     return self._action_space
+
+    # @action_space.setter
+    # def action_space(self, new_action_space):
+    #     self._action_space = new_action_space
+
+    # def __getattribute__(self, name):
+    #     try:
+    #         return object.__getattribute__(self, name)
+    #     except AttributeError:
+    #         return self.__getattr__(name)
 
     def __getattr__(self, name: str) -> Any:
         if hasattr(self.env, name):

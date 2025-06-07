@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType, Task
+from causal_gym.core import ObsType, ActType, Task, Graph
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -340,7 +340,8 @@ class RaceSCM(SCM):
                     edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
                 if conf_graph[i][j] == 1:
                     edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:

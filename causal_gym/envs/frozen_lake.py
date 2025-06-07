@@ -4,7 +4,7 @@ import numpy as np
 import pygame
 
 from typing import Union
-from ..core import SCM, PCH, Task
+from ..core import SCM, PCH, Task, Graph
 from ..core.types import PolicyType, ObsType, ActType
 
 
@@ -492,7 +492,8 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
 
 class FrozenLakePCH(PCH[PolicyType, ObsType, ActType, PolicyType, ObsType, ActType]):

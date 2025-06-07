@@ -2,8 +2,7 @@ import math
 import numpy as np
 
 from causal_gym import SCM, PCH
-from causal_gym.core.causal_graph import CausalGraph
-from causal_gym.core import PolicyType, ActType, ObsType, Task
+from causal_gym.core import PolicyType, ActType, ObsType, Task, Graph
 
 class MDPExampleSCM(SCM):
     """
@@ -96,7 +95,8 @@ class MDPExampleSCM(SCM):
             {'from_': 'Y', 'to_': "S'", 'type_': 'bidirected'},
             {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     
 

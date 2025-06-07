@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Tuple, Dict
 
-from causal_gym.core import SCM, PCH, Task
+from causal_gym.core import SCM, PCH, Task, Graph
 from causal_gym.core import ObsType, ActType
 import gymnasium as gym
 from gymnasium import spaces
@@ -210,7 +210,8 @@ class HighwaySingleStepSCM(SCM):
             {'from_': 'Y', 'to_': 'W', 'type_': 'bidirected'},
         ]
 
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
     
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:

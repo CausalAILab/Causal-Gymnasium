@@ -2,7 +2,7 @@ import numpy as np
 from typing import Any, Tuple, Dict
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType, PolicyType, Task
+from causal_gym.core import ObsType, ActType, PolicyType, Task, Graph
 from gymnasium import spaces
 
 from torchvision.datasets import MNIST
@@ -156,7 +156,8 @@ class MNISTSCM(SCM):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
     
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:

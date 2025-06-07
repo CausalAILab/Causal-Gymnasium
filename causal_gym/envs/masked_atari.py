@@ -3,7 +3,7 @@ import gymnasium as gym
 import numpy as np
 from typing import Callable
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task, Graph
 
 def obs_mask(env_name: str) -> Callable:
     if env_name == "Pong":
@@ -96,7 +96,8 @@ class MaskedAtariSCM(SCM):
             {'from_': 'Y', 'to_': "S'", 'type_': 'bidirected'},
             {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
     
 
 class MaskedAtariPCH(PCH):

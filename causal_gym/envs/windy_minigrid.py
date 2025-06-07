@@ -15,7 +15,7 @@ from minigrid.utils.rendering import (
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task, Graph
 from .constants import WIND_ICONS, COIN_IMG, FLAG_IMG, ROBO_IMG
 
 
@@ -178,7 +178,8 @@ class WindyMiniGridSCM(SCM):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     def action(self):
         """sample action from the behavioral policy

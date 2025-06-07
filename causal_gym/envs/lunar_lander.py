@@ -20,7 +20,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..core import SCM, PCH, Task
+from ..core import SCM, PCH, Task, Graph
 from ..core.types import ObsType, ActType, PolicyType
 from .constants import WIND_ICONS
 from .utils import overlay_resized_image
@@ -205,7 +205,8 @@ class LunarLanderSCM(SCM[PolicyType, ObsType, ActType]):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
 
 # =============================================================

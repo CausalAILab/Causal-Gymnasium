@@ -1,7 +1,7 @@
 import numpy as np
 import gymnasium as gym
 
-from ..core import SCM, PCH, Task
+from ..core import SCM, PCH, Task, Graph
 
 ANT_GEOM_ID_NAME_MAPPING = {
     3: 'left_leg_geom',
@@ -114,7 +114,8 @@ class RandomFrictionAntMujocoSCM(SCM):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
 
 class RandomFrictionAntMujocoPCH(PCH):

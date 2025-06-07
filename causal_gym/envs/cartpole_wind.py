@@ -16,9 +16,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..core.graph import Graph
-
-from ..core import SCM, PCH, Task
+from ..core import SCM, PCH, Task, Graph
 from ..core.types import ObsType, ActType, PolicyType
 
 # =============================================================

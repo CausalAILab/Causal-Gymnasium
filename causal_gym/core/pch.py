@@ -39,8 +39,8 @@ class PCH(
 
     def _permission_check(self, name):
         """Checks if the user has the right permission. Override this method as needed."""
-        if (name == "see" and self.task.learning_regime not in [LearningRegime.see, LearningRegime.cool, LearningRegime.ctf_do])\
-            or (name == "do" and self.task.learning_regime not in [LearningRegime.do, LearningRegime.cool, LearningRegime.ctf_do])\
+        if (name == "see" and self.task.learning_regime not in [LearningRegime.see, LearningRegime.cool, LearningRegime.ctf_do, LearningRegime.see_do])\
+            or (name == "do" and self.task.learning_regime not in [LearningRegime.do, LearningRegime.cool, LearningRegime.ctf_do, LearningRegime.see_do])\
             or (name == "ctf_do" and self.task.learning_regime not in [LearningRegime.ctf_do])\
             or (name == "step" and self.task.assumptions not in [Assumptions.nuc, Assumptions.markov]):
             raise PermissionError(f"You do not have permission to perform {name}(...) under task {self.task}.")

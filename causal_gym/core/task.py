@@ -14,6 +14,7 @@ from .policy_scope import PolicyScope
 class LearningRegime(StrEnum):
     see = "see"
     do = "do"
+    see_do = "see_do"
     ctf_do = "ctf_do"
     cool = "cool"
 

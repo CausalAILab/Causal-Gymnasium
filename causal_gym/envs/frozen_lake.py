@@ -504,14 +504,22 @@ class FrozenLakePCH(PCH[PolicyType, ObsType, ActType, PolicyType, ObsType, ActTy
         self.env = FrozenLakeSCM(**kwargs)
         super().__init__(env=self.env, task=task)
 
-    def see(self):
-        a = self.env.action()
-        obs, r, terminated, truncated, info = self.env.step(a)
-        return a, obs, r, terminated, truncated, info
+    # Observational step under behaviour policy
+    def see(self, see_policy=None):
+        if see_policy is not None:
+            a = see_policy(self.env.observation)
+        else:
+            a = self.env.action()
+        o, r, term, trunc, info = self.env.step(a)
+        info['natural_action'] = a
+        return o, r, term, trunc, info
 
-    def do(self, action: ActType):
-        obs, r, terminated, truncated, info = self.env.step(action)
-        return obs, r, terminated, truncated, info
+    # Interventional step with forced action
+    def do(self, do_policy):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return o, r, term, trunc, info
 
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -519,7 +527,8 @@ class FrozenLakePCH(PCH[PolicyType, ObsType, ActType, PolicyType, ObsType, ActTy
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
 
 if __name__ == "__main__":

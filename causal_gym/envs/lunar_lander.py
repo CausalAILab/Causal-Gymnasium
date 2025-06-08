@@ -223,17 +223,22 @@ class LunarLanderPCH(PCH):
     # ------------------------------------------------------------------
     #  Layer‑1 observational regime – SEE
     # ------------------------------------------------------------------
-    def see(self):
-        a = self.env.action()
-        obs, r, terminated, truncated, info = self.env.step(a)
-        return a, obs, r, terminated, truncated, info
+    # Observational step under behaviour policy
+    def see(self, see_policy=None):
+        if see_policy is not None:
+            a = see_policy(self.env.observation)
+        else:
+            a = self.env.action()
+        o, r, term, trunc, info = self.env.step(a)
+        info['natural_action'] = a
+        return o, r, term, trunc, info
 
-    # ------------------------------------------------------------------
-    #  Layer‑2 interventional regime – DO
-    # ------------------------------------------------------------------
-    def do(self, a: int):
-        obs, r, terminated, truncated, info = self.env.step(a)
-        return obs, r, terminated, truncated, info # Return 5 values
+    # Interventional step with forced action
+    def do(self, do_policy):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return o, r, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -241,7 +246,8 @@ class LunarLanderPCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
     def render(self, show_wind=False, show_natural_action=False):
         return self.env.render(show_wind, show_natural_action)

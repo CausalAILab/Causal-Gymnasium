@@ -401,10 +401,14 @@ class WindyMiniGridPCH(PCH):
         else:
             action = self.env.action()
         s, y, terminated, truncated, info  = self.env.step(action)
-        return action, s, y, terminated, truncated, info 
+        info['natural_action'] = action
+        return s, y, terminated, truncated, info 
     
-    def do(self, action):
-        return self.env.step(action)
+    def do(self, do_policy):
+        action = do_policy(self.env.agent_pos)
+        s, y, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return s, y, term, trunc, info
 
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -412,7 +416,8 @@ class WindyMiniGridPCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
     
     def render(self):
         return self.env.render()

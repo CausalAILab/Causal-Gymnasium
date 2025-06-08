@@ -81,11 +81,12 @@ class PCH(
         else:
             return self.env.__getattr__(name)
 
-    def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+    def see(
+        self, see_policy: PolicyType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.
 
         Returns:
-            action (ActType): a realized action following the behavior policy.
             observation (ObsType): An element of the environment's :attr:`observation_space` as the next observation due to the agent actions.
                 An example is a numpy array containing the positions and velocities of the pole in CartPole.
             reward (SupportsFloat): The reward as a result of taking the action.
@@ -101,6 +102,7 @@ class PCH(
                 hidden from observations, or individual reward terms that are combined to produce the total reward.
                 In OpenAI Gym <v26, it contains "TimeLimit.truncated" to distinguish truncation and termination,
                 however this is deprecated in favour of returning terminated and truncated variables.
+                action (ActType): a realized action following the behavior policy. Will also be included in the info.
             done (bool): (Deprecated) A boolean value for if the episode has ended, in which case further :meth:`step` calls will
                 return undefined results. This was removed in OpenAI Gym v26 in favor of terminated and truncated attributes.
                 A done signal may be emitted for different reasons: Maybe the task underlying the environment was solved successfully,
@@ -109,7 +111,7 @@ class PCH(
         raise NotImplementedError
 
     def do(
-        self, action: ActType
+        self, do_policy: PolicyType
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics using the agent actions.
 

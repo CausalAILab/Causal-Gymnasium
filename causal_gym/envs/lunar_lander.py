@@ -226,7 +226,7 @@ class LunarLanderPCH(PCH):
     # Observational step under behaviour policy
     def see(self, see_policy=None):
         if see_policy is not None:
-            a = see_policy(self.env.observation)
+            a = see_policy(self.env.observation())
         else:
             a = self.env.action()
         o, r, term, trunc, info = self.env.step(a)

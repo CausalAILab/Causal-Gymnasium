@@ -14,6 +14,7 @@ from .race import RaceSCM, RacePCH
 from .masked_atari import MaskedAtariSCM, MaskedAtariPCH
 from .random_friction_ant import RandomFrictionAntMujocoSCM, RandomFrictionAntMujocoPCH
 from .robowalk import RobotWalkSCM, RobotWalkPCH
+from .wheredo_example import ExamplePCH_9_5, ExampleSCM_9_5
 
 from gymnasium.envs.registration import register
 

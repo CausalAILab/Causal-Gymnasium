@@ -1,9 +1,9 @@
+from asyncio import set_event_loop_policy
 import math
 import numpy as np
 
 from causal_gym import SCM, PCH
-from causal_gym.core.causal_graph import CausalGraph
-from causal_gym.core import PolicyType, ActType, ObsType, Task
+from causal_gym.core import PolicyType, ActType, ObsType, Task, Graph
 
 class MDPExampleSCM(SCM):
     """
@@ -96,7 +96,8 @@ class MDPExampleSCM(SCM):
             {'from_': 'Y', 'to_': "S'", 'type_': 'bidirected'},
             {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     
 
@@ -107,15 +108,22 @@ class MDPExamplePCH(PCH):
         self.env = MDPExampleSCM(init_dist, max_step)
         super().__init__(task=task)
 
-    def see(self):
+    def see(self, see_policy=None):
         u1, u2, u3 = self.env.sample_u()
-        x = self.env.action(self.env.s, u1)
+        if see_policy is not None:
+            x = see_policy(self.env.s, u1)
+        else:
+            x = self.env.action(self.env.s, u1)
         s, y, terminated, truncated, info = self.env.step(x, u1, u2, u3)
-        return x, s, y, terminated, truncated, info 
+        info['natural_action'] = x
+        return s, y, terminated, truncated, info 
 
-    def do(self, action):
+    def do(self, do_policy):
         u1, u2, u3 = self.env.sample_u()
-        return self.env.step(action, u1, u2, u3)
+        action = do_policy(u1, u2, u3)
+        s, y, term, trunc, info = self.env.step(action, u1, u2, u3)
+        info['action'] = action
+        return s, y, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -123,4 +131,5 @@ class MDPExamplePCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info

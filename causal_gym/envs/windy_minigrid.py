@@ -15,7 +15,7 @@ from minigrid.utils.rendering import (
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task, Graph
 from .constants import WIND_ICONS, COIN_IMG, FLAG_IMG, ROBO_IMG
 
 
@@ -178,7 +178,8 @@ class WindyMiniGridSCM(SCM):
             # Bidirected confounding between Action and Next State
             {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
         ]
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     def action(self):
         """sample action from the behavioral policy
@@ -400,10 +401,14 @@ class WindyMiniGridPCH(PCH):
         else:
             action = self.env.action()
         s, y, terminated, truncated, info  = self.env.step(action)
-        return action, s, y, terminated, truncated, info 
+        info['natural_action'] = action
+        return s, y, terminated, truncated, info 
     
-    def do(self, action):
-        return self.env.step(action)
+    def do(self, do_policy):
+        action = do_policy(self.env.agent_pos)
+        s, y, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return s, y, term, trunc, info
 
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -411,7 +416,8 @@ class WindyMiniGridPCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
     
     def render(self):
         return self.env.render()

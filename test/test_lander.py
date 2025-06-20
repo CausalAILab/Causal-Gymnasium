@@ -14,6 +14,7 @@ Generates two PNGs:
 import numpy as np
 import matplotlib.pyplot as plt
 from causal_gym.envs import LunarLanderPCH
+from causal_gym.core import Task
 
 
 NUM_STATES = 5 * 6 * 5 * 6 #900
@@ -36,7 +37,7 @@ def run_observational(env, n_episodes, horizon):
         env.reset()
         success = False
         for _ in range(horizon):
-            _, obs, r, term, trunc, _ = env.see()
+            obs, r, term, trunc, _ = env.see()
             if term or trunc:
                 success = (r == 100)  # built-in landing bonus
                 break
@@ -54,7 +55,7 @@ def run_interventional(env, n_episodes, horizon, action):
         env.reset()
         success = False
         for _ in range(horizon):
-            obs, r, term, trunc, _ = env.do(action)
+            obs, r, term, trunc, _ = env.do(lambda x: action)
             if term or trunc:
                 success = (r == 100)
                 break
@@ -76,7 +77,8 @@ def run_ctf_ucbvi(env, agent, n_episodes, horizon, best_p):
 
         for _ in range(horizon):
             # 1) Observe under behavior policy
-            x_int, obs, _, term_obs, trunc_obs, _ = env.see()
+            obs, _, term_obs, trunc_obs, info = env.see()
+            x_int = info['natural_action']
             if term_obs or trunc_obs:
                 # episode ended under the behavior policy
                 break
@@ -117,7 +119,7 @@ def run_ctf_ucbvi(env, agent, n_episodes, horizon, best_p):
 # ------------------------------------------------------------
 # Main experiment (compute probabilities & regret)
 # ------------------------------------------------------------
-env_obs = LunarLanderPCH()
+env_obs = LunarLanderPCH(task=Task(learning_regime='see'))
 obs_success_count = run_observational(env_obs, N_EPISODES, HORIZON)
 p_obs = obs_success_count / N_EPISODES
 print(f"P(goal|see) ≈ {p_obs:.3f}")

@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Tuple, Dict
 
-from causal_gym.core import SCM, PCH, Task
+from causal_gym.core import SCM, PCH, Task, Graph
 from causal_gym.core import ObsType, ActType
 import gymnasium as gym
 from gymnasium import spaces
@@ -210,7 +210,8 @@ class HighwaySingleStepSCM(SCM):
             {'from_': 'Y', 'to_': 'W', 'type_': 'bidirected'},
         ]
 
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
     
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -237,10 +238,15 @@ class HighwaySingleStepPCH(PCH):
             action = self.env.action(x, z, w, l)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
-        return action, obs, reward, terminated, truncated, info
+        info['natural_action'] = action
+        return obs, reward, terminated, truncated, info
 
-    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action, show_reward=show_reward)
+    # Interventional step with forced action
+    def do(self, do_policy, show_reward = False):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        info['action'] = action
+        return o, r, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -248,7 +254,8 @@ class HighwaySingleStepPCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

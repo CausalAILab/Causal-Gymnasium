@@ -16,9 +16,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from ..core.graph import Graph
-
-from ..core import SCM, PCH, Task
+from ..core import SCM, PCH, Task, Graph
 from ..core.types import ObsType, ActType, PolicyType
 
 # =============================================================
@@ -135,7 +133,6 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
     @property
     def get_graph(self):
         nodes = [
-            # {'name': 'U', 'label': 'Wind', 'type': 'latent'},
             {'name': 'S', 'label': 'State'},
             {'name': 'X', 'label': 'Action'},
             {'name': 'Y', 'label': 'Reward'},
@@ -143,8 +140,6 @@ class CartPoleWindSCM(SCM[PolicyType, ObsType, ActType]):
         ]
 
         edges = [
-            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
-            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
             {'from_': 'S', 'to_': 'X', 'type_': 'directed'},
             {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
             {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
@@ -170,14 +165,20 @@ class CartPoleWindPCH(PCH):
         super().__init__(env=self.env, task=task)  # Pass the created env to the PCH constructor
 
     # Observational step under behaviour policy
-    def see(self):
-        a = self.env.action()
+    def see(self, see_policy=None):
+        if see_policy is not None:
+            a = see_policy(self.env.observation())
+        else:
+            a = self.env.action()
         o, r, term, trunc, info = self.env.step(a)
-        return a, o, r, term, trunc, info
+        info['natural_action'] = a
+        return o, r, term, trunc, info
 
     # Interventional step with forced action
-    def do(self, action):
+    def do(self, do_policy):
+        action = do_policy(self.env.observation())
         o, r, term, trunc, info = self.env.step(action)
+        info['action'] = action
         return o, r, term, trunc, info
     
     # Counterfactual policy intervention
@@ -186,4 +187,5 @@ class CartPoleWindPCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info

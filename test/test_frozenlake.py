@@ -1,7 +1,9 @@
 # Updated test_frozenlake.py to use counterfactual UCB-VI (Alg.26)
 import numpy as np
 import matplotlib.pyplot as plt
+from causal_gym.core.task import LearningRegime
 from causal_gym.envs import FrozenLakePCH
+from causal_gym.core import Task
 
 # Parameters
 N_EPISODES = 1000
@@ -14,7 +16,7 @@ def run_observational(env, n_episodes, horizon):
         _, _ = env.reset()
         goal = False
         for _ in range(horizon):
-            x_int, obs, r_obs, term, trunc, _ = env.see()
+            obs, r_obs, term, trunc, _ = env.see()
             if term or trunc:
                 goal = (r_obs == 1.0)
                 break
@@ -28,7 +30,7 @@ def run_interventional(env, n_episodes, horizon, action):
         _, _ = env.reset()
         goal = False
         for _ in range(horizon):
-            obs, r, term, trunc, _ = env.do(action)
+            obs, r, term, trunc, _ = env.do(lambda x: action)
             if term or trunc:
                 goal = (r == 1.0)
                 break
@@ -38,7 +40,7 @@ def run_interventional(env, n_episodes, horizon, action):
 
 if __name__ == '__main__':
     # 1. Observational
-    env_obs = FrozenLakePCH(is_slippery=True)
+    env_obs = FrozenLakePCH(is_slippery=True, task=Task(learning_regime="see"))
     p_obs = run_observational(env_obs, N_EPISODES, HORIZON)
     print(f"P(goal|see) ≈ {p_obs:.3f}")
 

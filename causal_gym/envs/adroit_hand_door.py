@@ -2,7 +2,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium_robotics.envs.adroit_hand.adroit_door import AdroitHandDoorEnv
 
-from ..core import SCM, PCH
+from ..core import SCM, PCH, Task, Graph
 
 class AdroitHandDoorSCM(SCM):
     metadata = {
@@ -89,6 +89,7 @@ class AdroitHandDoorPCH(PCH):
         policy=None,
         **kwargs
     ):
+        task = kwargs.pop("task", Task())
         self.env: AdroitHandDoorSCM = AdroitHandDoorSCM(
             max_episode_steps=max_episode_steps,
             policy=policy,
@@ -98,19 +99,30 @@ class AdroitHandDoorPCH(PCH):
         if not isinstance(self.env.observation_space, gym.spaces.Box):
             raise ValueError("AdroitHandDoorPCH only supports Box observation spaces.")
         
-        super().__init__()
+        super().__init__(task=task)
         
-    def see(self):
-        action = self.env.action()
-        next_obs, reward, term, trunc, info = self.env.step(action)
-        return action, next_obs, reward, term, trunc, info
-    
-    def do(self, action):
-        next_obs, reward, term, trunc, info = self.env.step(action)
-        return next_obs, reward, term, trunc, info
+    # Observational step under behaviour policy
+    def see(self, see_policy=None):
+        if see_policy is not None:
+            a = see_policy(self.env.observation())
+        else:
+            a = self.env.action()
+        o, r, term, trunc, info = self.env.step(a)
+        info['natural_action'] = a
+        return o, r, term, trunc, info
+
+    # Interventional step with forced action
+    def do(self, do_policy):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return o, r, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
         intuition = self.env.action()
         action = ctf_policy(self.env.observation(), intuition)
-        return self.env.step(action)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return obs, r, terminated, truncated, info

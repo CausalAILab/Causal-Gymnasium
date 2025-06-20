@@ -100,13 +100,18 @@ class MiniGridActionRemapWrapper(ActionPCHWrapper):
         else:
             unwrapped_bpolicy = None
         prev_dir = self.env.agent_dir
-        action, observation, reward, terminated, truncated, info = self.env.see(bpolicy=unwrapped_bpolicy)
+        observation, reward, terminated, truncated, info = self.env.see(bpolicy=unwrapped_bpolicy)
+        # this is the original natural action under minigrid action system
+        action = info['natural_action']
         new_dir = self.env.agent_dir
-        return self.wrap_action(action, prev_dir, new_dir), observation, reward, terminated, truncated, info
+        # our wrapped natural action
+        info['natural_action'] = self.wrap_action(action, prev_dir, new_dir)
+        return observation, reward, terminated, truncated, info
 
-    def do(self, action: WrapperActType) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+    def do(self, do_policy) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Runs the :attr:`env` :meth:`env.do` using the modified ``action`` from :meth:`self.unwrap_action`."""
-        return self.env.do(self.unwrap_action(action))
+        action = do_policy(self.agent_pos)
+        return self.env.do(lambda x: self.unwrap_action(action))
 
     def wrap_action(self, action: ActType, prev_dir: int, new_dir: int) -> WrapperActType:
         """

@@ -13,11 +13,21 @@ from .highway import HighwaySCM, HighwayPCH
 from .race import RaceSCM, RacePCH
 from .masked_atari import MaskedAtariSCM, MaskedAtariPCH
 from .random_friction_ant import RandomFrictionAntMujocoSCM, RandomFrictionAntMujocoPCH
+from .robowalk import RobotWalkSCM, RobotWalkPCH
+from .wheredo_example import ExamplePCH_9_5, ExampleSCM_9_5
 
 from gymnasium.envs.registration import register
 
 # We don't add max_episode_steps, disable_env_checker, or order_enforce for SCMs
 # this is to remove redundant env wrappers that are incompatible with SCM APIs
+
+register(
+    id="causal_gym/RobotWalk-v0",
+    entry_point="causal_gym.envs:RobotWalkPCH",
+    max_episode_steps=None,
+    disable_env_checker=True,
+    order_enforce=False,
+)
 
 register(
     id="causal_gym/WindyGridWorld-v0",

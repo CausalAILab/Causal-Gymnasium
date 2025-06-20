@@ -23,4 +23,7 @@ from .types import (
     WrapperActType,
     WrapperPolicyType
 )
+from .graph import (
+    Graph
+)
 

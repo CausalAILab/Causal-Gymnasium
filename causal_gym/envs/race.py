@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType, Task
+from causal_gym.core import ObsType, ActType, Task, Graph
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -340,7 +340,8 @@ class RaceSCM(SCM):
                     edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
                 if conf_graph[i][j] == 1:
                     edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
-        return nodes, edges
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -384,10 +385,15 @@ class RacePCH(PCH):
             action = self.env.action(D, W, C, H)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
-        return action, obs, reward, terminated, truncated, info
+        info['natural_action'] = action
+        return obs, reward, terminated, truncated, info
 
-    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action, show_reward=show_reward)
+    # Interventional step with forced action
+    def do(self, do_policy, show_reward = False):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        info['action'] = action
+        return o, r, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -395,7 +401,8 @@ class RacePCH(PCH):
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
-        return action, obs, r, terminated, truncated, info
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

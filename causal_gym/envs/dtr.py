@@ -230,9 +230,9 @@ class DTRPCH(PCH):
             info: Additional information
         """
         if self.env.stage == 0:
-            action = do_policy(self.env.s1, self.env.u)
+            action = do_policy(self.env.s1)
         else:
-            action = do_policy(self.env.s1, self.env.x1, self.env.s2, self.env.u)
+            action = do_policy(self.env.s1, self.env.x1, self.env.s2)
 
         o, r, term, trunc, info = self.env.step(action)
         info['action'] = action

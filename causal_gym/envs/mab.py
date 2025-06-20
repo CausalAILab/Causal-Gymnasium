@@ -140,7 +140,7 @@ class MABPCH(PCH):
         return o, r, term, trunc, info
     
     def do(self, do_policy):
-        action = do_policy(self.env.observation())
+        action = do_policy()
         o, r, term, trunc, info = self.env.step(action)
         info['action'] = action
         return o, r, term, trunc, info

@@ -120,16 +120,17 @@ class MDPPCH(PCH):
 
     def do(self, do_policy):
         u1, u2, u3 = self.env.sample_u()
-        action = do_policy(u1, u2, u3)
+        action = do_policy()
         s, y, term, trunc, info = self.env.step(action, u1, u2, u3)
         info['action'] = action
         return s, y, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
-        intuition = self.env.action()
-        action = ctf_policy(self.env.observation(), intuition)
-        obs, r, terminated, truncated, info = self.env.step(action)
+        u1, u2, u3 = self.env.sample_u()
+        intuition = self.env.action(self.env.s, self.env._u1())
+        action = ctf_policy(self.env.s, intuition)
+        obs, r, terminated, truncated, info = self.env.step(action, u1, u2, u3)
         info['natural_action'] = intuition
         info['action'] = action
         return obs, r, terminated, truncated, info

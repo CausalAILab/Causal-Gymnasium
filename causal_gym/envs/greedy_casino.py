@@ -99,9 +99,9 @@ class MABSCM(SCM):
         nodes = [
             # {'name': 'U', 'label': 'Confounder', 'type': 'latent'},
             {'name': 'X', 'label': 'Action'},
-            {'name': 'Y', 'label': 'Reward'}
+            {'name': 'Y', 'label': 'Reward'},
             {'name': 'B', 'label': 'Blinking', 'type': 'latent'},
-            {'name': 'D', 'label': 'Drunkenness', 'type': 'latent'}        
+            {'name': 'D', 'label': 'Drunkenness', 'type': 'latent'}      
         ]
 
         edges = [

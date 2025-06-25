@@ -120,7 +120,7 @@ class MDPPCH(PCH):
 
     def do(self, do_policy):
         u1, u2, u3 = self.env.sample_u()
-        action = do_policy()
+        action = do_policy(self.env.s)
         s, y, term, trunc, info = self.env.step(action, u1, u2, u3)
         info['action'] = action
         return s, y, term, trunc, info

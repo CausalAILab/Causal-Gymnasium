@@ -15,6 +15,6 @@ setup(
         "toposort>=1.7",
         "pydot>=1.4.2",
         "toposort",
-        "pydash"
+        "pydash",
     ],
 )

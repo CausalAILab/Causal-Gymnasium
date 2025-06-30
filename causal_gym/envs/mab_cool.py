@@ -40,12 +40,28 @@ class MABCOOLPCH(PCH):
         self.env = MABCOOLSCM(delta)
         super().__init__()
         
-    def see(self):
+    def see(self, see_policy=None):
         u = self.env._u()
-        x = self.env.action(u)
+        if see_policy is not None:
+            x = see_policy(u)
+        else:
+            x = self.env.action(u)
         _, y, terminated, truncated, info = self.env.step(x, u)
-        return x, _, y, terminated, truncated, info
+        info['natural_action'] = x
+        return _, y, terminated, truncated, info
     
-    def do(self, action):
+    def do(self, do_policy=None):
         u = self.env._u()
-        return self.env.step(action, u)
+        action = do_policy()
+        _, y, terminated, truncated, info = self.env.step(action, u)
+        info['action'] = action
+        return _, y, terminated, truncated, info
+    
+    def ctf_do(self, ctf_policy):
+        u = self.env._u()
+        intuition = self.env.action(u)
+        action = ctf_policy(intuition)
+        _, y, terminated, truncated, info = self.env.step(action, u)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return _, y, terminated, truncated, info

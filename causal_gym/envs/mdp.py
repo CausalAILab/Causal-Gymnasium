@@ -5,7 +5,7 @@ import numpy as np
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType, Task, Graph
 
-class MDPExampleSCM(SCM):
+class MDPSCM(SCM):
     """
     A confounded MDP from CRL book Chap. 7 Example 7.2.
     See also the inventory control example from Csaba 2010 - Algos for RL, Example 1.
@@ -72,7 +72,7 @@ class MDPExampleSCM(SCM):
         # Return next state, reward, terminated, truncated, info
         return self.s, self.y, False, self.num_step > self._max_step, {}
     
-    # Causal graph -------------------------------------------------------
+    # Causal graph
     @property
     def get_graph(self):
         nodes = [
@@ -101,11 +101,11 @@ class MDPExampleSCM(SCM):
 
     
 
-class MDPExamplePCH(PCH):
+class MDPPCH(PCH):
     """PCH for the MDP Example defined above.
     """
     def __init__(self, init_dist=[.5,.5], max_step=30, task:Task=Task()):
-        self.env = MDPExampleSCM(init_dist, max_step)
+        self.env = MDPSCM(init_dist, max_step)
         super().__init__(task=task)
 
     def see(self, see_policy=None):
@@ -120,16 +120,17 @@ class MDPExamplePCH(PCH):
 
     def do(self, do_policy):
         u1, u2, u3 = self.env.sample_u()
-        action = do_policy(u1, u2, u3)
+        action = do_policy(self.env.s)
         s, y, term, trunc, info = self.env.step(action, u1, u2, u3)
         info['action'] = action
         return s, y, term, trunc, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
-        intuition = self.env.action()
-        action = ctf_policy(self.env.observation(), intuition)
-        obs, r, terminated, truncated, info = self.env.step(action)
+        u1, u2, u3 = self.env.sample_u()
+        intuition = self.env.action(self.env.s, self.env._u1())
+        action = ctf_policy(self.env.s, intuition)
+        obs, r, terminated, truncated, info = self.env.step(action, u1, u2, u3)
         info['natural_action'] = intuition
         info['action'] = action
         return obs, r, terminated, truncated, info

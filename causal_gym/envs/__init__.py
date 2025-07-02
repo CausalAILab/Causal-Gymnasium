@@ -1,5 +1,7 @@
 from .windy_minigrid import WindyMiniGridSCM, WindyMiniGridPCH
-from .mdp_example import MDPExampleSCM, MDPExamplePCH
+from .mdp import MDPSCM, MDPPCH
+from .mab import MABSCM, MABPCH
+from .dtr import DTRSCM, DTRPCH
 from .lava_minigrid import CustomCrossingEnv
 from .wind_dist import WIND_DIST
 # from .wheredo_example import ExampleSCM_9_5, ExamplePCH_9_5

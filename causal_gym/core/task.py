@@ -14,6 +14,7 @@ from .policy_scope import PolicyScope
 class LearningRegime(StrEnum):
     see = "see"
     do = "do"
+    see_do = "see_do"
     ctf_do = "ctf_do"
     cool = "cool"
 
@@ -35,7 +36,7 @@ class Task(namedtuple('Task', ['learning_regime', 'assumptions', 'policy_space',
     __slots__ = ()
     def __new__(
         cls,
-        learning_regime: LearningRegime = LearningRegime.do,
+        learning_regime: LearningRegime = LearningRegime.ctf_do,
         assumptions: Assumptions = Assumptions.dag,
         policy_space: PolicyScope = None,
         reward_func: RewardFunc = RewardFunc.discount

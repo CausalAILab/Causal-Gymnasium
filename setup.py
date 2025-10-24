@@ -4,7 +4,7 @@ setup(
     name="causal_gym",
     version="1.0.0",
     install_requires=[
-        "gymnasium>=0.29.1", 
+        "gymnasium[all]>=0.29.1", 
         "pygame>=2.5.2", 
         "multiprocess>=0.70.16",
         "highway-env>=1.4.0",

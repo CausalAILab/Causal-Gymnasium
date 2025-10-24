@@ -27,7 +27,6 @@ class MNISTSCM(SCM):
         self.s = None
         self.y = None
 
-        # SCM says to set these no matter what but I don't see a use for them yet
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Dict({
             'x': spaces.Discrete(2),

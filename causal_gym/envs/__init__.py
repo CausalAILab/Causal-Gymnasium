@@ -41,6 +41,17 @@ register(
 
 SUPPORTED_ATARI_ENVS = [
     "Pong",
+    "Amidar",
+    "Asterix",
+    "Boxing",
+    "Breakout",
+    "ChopperCommand",
+    "Gopher",
+    "KungFuMaster",
+    "MsPacman",
+    "Qbert",
+    "RoadRunner",
+    "Seaquest",
 ]
 for env_name in SUPPORTED_ATARI_ENVS:
     register(

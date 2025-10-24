@@ -14,6 +14,82 @@ def obs_mask(env_name: str) -> Callable:
             obs[:25, :, :] = 0
             return obs
         return helper
+    elif env_name == "Amidar":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 53:, :] = 0
+            return obs
+        return helper
+    elif env_name == "Asterix":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 50:, :] = 0
+            return obs
+        return helper
+    elif env_name == "Boxing":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            # up
+            # obs[:, :, 56:, :] = 0
+            # obs[:, :, :30, :] = 0
+            # obs[:, :, :, 55:] = 0
+            # obs[:, :, :, :10] = 0
+
+            # right
+            obs[:, :, 56:, :] = 0
+            obs[:, :, :8, :] = 0
+            obs[:, :, :, 30:] = 0
+            obs[:, :, :, :10] = 0
+
+            # left
+            # obs[:, :, 56:, :] = 0
+            # obs[:, :, :8, :] = 0
+            # obs[:, :, :, 55:] = 0
+            # obs[:, :, :, :30] = 0
+            return obs
+        return helper
+    elif env_name == "Breakout":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            # obs[:, :, :8, :35] = 0
+            obs[:, :, :28, :] = 0
+            return obs
+        return helper
+    elif env_name == "ChopperCommand":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 52:, :] = 0
+            obs[:, :, :15, :] = 0
+            return obs
+        return helper
+    elif env_name == "Gopher":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, :10, :] = 0
+            obs[:, :, 55:, :] = 0
+            return obs
+        return helper
+    elif env_name == "KungFuMaster":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            # obs[:, :, 50:, :] = 0
+            obs[:, :, :8, :] = 0
+            return obs
+        return helper
+    elif env_name == "MsPacman":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 53:, :] = 0
+            return obs
+        return helper
+    elif env_name == "Qbert":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            return obs
+        return helper
+    elif env_name == "RoadRunner":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 58:, :] = 0
+            obs[:, :, :20, :] = 0
+            return obs
+        return helper
+    elif env_name == "Seaquest":
+        def helper(obs: np.ndarray) -> np.ndarray:
+            obs[:, :, 58:, :] = 0
+            obs[:, :, :6, :] = 0
+            return obs
+        return helper
     else:
         raise NotImplementedError(f"Obs mask for '{env_name}' is not implemented yet.")
 

@@ -2,13 +2,15 @@
 
 CausalGym is a Gymnasium-compatible suite for experimenting with structural causal models in causal reinforcement learning. Each environment exposes both the usual step/reset loop and the Pearl Causal Hierarchy (PCH) interface so you can collect observational rollouts, perform interventions, and query counterfactuals inside a single simulation.
 
+**We also develop the accompanied Causal RL algorithms to be used with CausalGym. See [Causal RL Baselines](https://github.com/CausalAILab/causalrl) for more details.**
+
 ## Highlights
 - Builds causal RL simulators on top of Gymnasium, highway-env, Minigrid, ALE, MuJoCo, and custom tabular domains.
 - Provides unified `SCM` and `PCH` abstractions so behaviour policies (`see`), interventions (`do`), and counterfactual queries (`ctf_do`) share the same environment instance.
 - Ships with causal graphs, exogeneous variable sampling hooks, and reusable wrappers to support strucutred causal reasoning.
 - Bundles ready-to-run notebooks and scripts illustrating causal RL workflows across grid worlds, classic control, Atari games, driving simulators, and high-dimensional tasks.
 
-## Core Causal Concepts Explained
+## Core Concepts Explained
 ![CausalGym repository overview](examples/repo.png)
 
 **Environment - Structural Causal Models (SCMs)** – Each environment subclasses `causal_gym.core.SCM`, which you can think of as a Gymnasium `Env` augmented with structural equations. An SCM specifies:
@@ -18,17 +20,66 @@ CausalGym is a Gymnasium-compatible suite for experimenting with structural caus
 
 From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition `p(s', r | s, a)` in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By exposing the latents and graph, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
 
-**Pearl’s Causal Hierarchy (PCH)** – The companion `PCH` wrapper is the control panel for navigating the three interaction modalities with an SCM:
+**Interface - Pearl’s Causal Hierarchy (PCH)** – The companion `PCH` wrapper is the control panel for navigating the three interaction modalities with an SCM:
 - *Level 1 – Observing (`see`)*: The environment evolves under its built-in behaviour policy. Calling `see()` corresponds to passively logging trajectories; the info dict records the “natural action” that was taken.
 - *Level 2 – Intervening (`do`)*: The `do` operator breaks incoming edges into the action node. You supply a `do_policy` (mapping observation → action) that samples an action w.r.t the input observation. This is similar to `step()` interface in the standard Gymnasium setup.
 - *Level 3 – Counterfactual (`ctf_do`)*: Counterfactuals ask “what would have happened under a different action *given* what we just observed?” The wrapper first lets the behaviour policy act, then calls your `ctf_policy(observation, natural_action)` so you can deviate from the natural choice while keeping the sampled exogenous variables fixed.
+
+**Assumptions – Non-parametric priors over the world**
+Every `Task` carries a structural assumption that constrains how an agent may intereact with the environment. We currently support three families that align with the Causal AI textbook:
+- `Assumptions.dag`: the SCM is fully captured by a directed acyclic graph \( \mathcal{G} \). This is the default for most CausalGym domains and corresponds to standard definition of causal diagrams.
+- `Assumptions.nuc`: no unobserved confounders (NUC) guarantee independent exogenous variables.
+- `Assumptions.markov`: the dynamics satisfies Markov property (or POMDP with belief augmentation). This is useful when you test traditional RL algorithms that assume Markov structure in CausalGym.
+
+We plan to expand the class of strucutral assumptions to also support Equivalence Class (EC) in the future.
+
+**Tasks – putting learning regimes, assumptions, policies, and rewards together**
+`Task` (see `causal_gym/core/task.py`) is a lightweight tuple that specifies
+```
+Task(
+    learning_regime: LearningRegime,
+    assumptions: Assumptions,
+    policy_space: PolicyScope | None,
+    reward_func: RewardFunc
+)
+```
+- **Learning regime** controls which interaction tiers are permissible (`see`, `do`, `ctf_do`, `see_do`, `cool`). The PCH wrapper enforces this, for example, `LearningRegime.see` disables `env.do(...)`.
+- **Structural assumptions** document the strucutural knowledge described above. Downstream tooling can inspect this flag to decide identifiability or to infer independece relationships.
+- **Policy scope** (optional) restricts the policy class. If omitted, the environment’s behaviour policy's scope is treated as the default.
+- **Reward function** declares the aggregation semantics (`discount`, `average`, or `sum`).
+
+The table below mirrors Part III of the [Causal AI book](https://causalai-book.net/) and maps common research tasks to their regime/assumption pairings.
+$$
+\begin{array}{c|l|c|c|c|c|c}
+\textbf{\#} & \textbf{Task} & \textbf{Learning Regime }(\mathcal{L}) & 
+\textbf{Structural Assumptions }(\mathcal{A}) & 
+\textbf{Policy Space }(\Pi) & 
+\textbf{Reward Function }(\mathcal{R}) & 
+\textbf{SCM Envs. }(\Pi) \\
+\hline
+1 & \text{Off-policy Learning} & \text{See} & \text{NUC} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+2 & \text{Online Learning} & \text{Do} & - & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+3 & \text{Causal Identification} & \text{See} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+4 & \text{Causal Offline-to-Online Learning} & \text{See + Do} & - & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+5 & \text{Where to do \& What to look for} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{MIX}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+6 & \text{Counterfactual Decision Making} & \text{Ctf-Do} & - & \Pi_{\text{CTF}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+7 & \text{Causal Imitation Learning} & \text{See} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & - & \mathcal{M}^* \\
+8 & \text{Causally Aligned Curriculum Learning} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \{ \mathcal{M}_i \}_{i=1}^N \\
+9 & \text{Reward Shaping} & \text{See + Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y') \mapsto \mathbb{R} & \mathcal{M}^* \\
+10 & \text{Causal Game Theory} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
+\end{array}
+$$
+Rows `1–3` correspond to purely observational settings (off-policy evaluation, identification, imitation). Rows `4–8` describe hybrid workflows where agents both observe and intervene to improve data collection, and `9–10` cover more open-ended objectives (reward shaping, multi-agent causal games). CausalGym ships example tasks for each so you can plug different environments into the same experimental protocol.
+
+**Reward**
+Defines how cumulative returns are calculated.
 
 **Bridge to Potential Outcomes (PO)** – If you are used to notation such as \(Y_x\) or \(Y_{x'} - Y_x\):
 - `see()` produces observational data \( (U, X, Y) \) with the action determined by the behaviour policy. Such data is collected passively and is close to concepts like standard logged bandit feedback in the literature.
 - `do(policy)` realises \(Y_{x}\) by forcing `X` to whatever the policy outputs. Different calls with different forced actions mimic Randomized Controlled Trials (RCT).
 - `ctf_do` retrieves a single-world intervention graph (SWIG) view: the natural action gives you the “factual” world, and the counterfactual policy lets you evaluate contrasts such as \(Y_{x'} - Y_x\) conditioned on the realised latents. Because the SCM keeps track of the sampled `U`, two consecutive calls within the same episode remain coupled in the potential-outcome sense.
 
-**Tasks and permissions** – The `Task` object configures which levels you are allowed to access (`LearningRegime.see`, `do`, `ctf_do`, or mixtures like `see_do`). This gives you a precise way to state assumptions: for example, an off-policy evaluation project can restrict itself to `see`, whereas algorithmic recourse or counterfactual policy evaluation requires `ctf_do`.
+<!-- **Tasks and permissions** – The `Task` object configures which levels you are allowed to access (`LearningRegime.see`, `do`, `ctf_do`, or mixtures like `see_do`). This gives you a precise way to state assumptions: for example, an off-policy evaluation project can restrict itself to `see`, whereas algorithmic recourse or counterfactual policy evaluation requires `ctf_do`. -->
 
 For a deeper dive into the underlying theory, see the [Causal Artificial Intelligence](https://causalai-book.net/) textbook from our [Causal AI Lab](https://causalai.net). The README sections below reference these concepts when describing each environment and its causal affordances.
 

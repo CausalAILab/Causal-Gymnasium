@@ -140,7 +140,7 @@ Defines how cumulative returns are calculated.
 
 <!-- **Tasks and permissions** – The `Task` object configures which levels you are allowed to access (`LearningRegime.see`, `do`, `ctf_do`, or mixtures like `see_do`). This gives you a precise way to state assumptions: for example, an off-policy evaluation project can restrict itself to `see`, whereas algorithmic recourse or counterfactual policy evaluation requires `ctf_do`. -->
 
-For a deeper dive into the underlying theory, see the [Causal Artificial Intelligence](https://causalai-book.net/) textbook from our [Causal AI Lab](https://causalai.net). The README sections below reference these concepts when describing each environment and its causal affordances.
+For a deeper dive into the underlying theory, see the [Causal Artificial Intelligence](https://causalai-book.net/) textbook from our [Causal AI Lab](https://causalai.net). The README sections above reference these concepts when describing each environment and its causal affordances.
 
 ## Contributing & Collaboration
 

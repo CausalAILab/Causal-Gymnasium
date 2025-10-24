@@ -11,7 +11,7 @@ CausalGym is a Gymnasium-compatible suite for experimenting with structural caus
 - Bundles ready-to-run notebooks and scripts illustrating causal RL workflows across grid worlds, classic control, Atari games, driving simulators, and high-dimensional tasks.
 
 ## Core Concepts Explained
-![CausalGym repository overview](/examples/repo.png)
+![CausalGym repository overview](repo.png)
 
 **Environment - Structural Causal Models (SCMs)** – Each environment subclasses `causal_gym.core.SCM`, which you can think of as a Gymnasium `Env` augmented with structural equations. Each environment specifies:
 - *Endogenous variables* (state, action, reward, next state, perception, etc.) updated step-by-step via deterministic functions.

@@ -25,7 +25,7 @@ From an RL researcher’s perspective, an SCM decomposes the usual Markovian tra
 - *Level 2 – Intervening (`do`)*: The `do` operator breaks incoming edges into the action node. You supply a `do_policy` (mapping observation → action) that samples an action w.r.t the input observation. This is similar to `step()` interface in the standard Gymnasium setup.
 - *Level 3 – Counterfactual (`ctf_do`)*: Counterfactuals ask “what would have happened under a different action *given* what we just observed?” The wrapper first lets the behaviour policy act, then calls your `ctf_policy(observation, natural_action)` so you can deviate from the natural choice while keeping the sampled exogenous variables fixed.
 
-**Assumptions – Non-parametric priors over the world**
+**Assumptions – Non-parametric Priors**
 Every `Task` carries a structural assumption that constrains how an agent may intereact with the environment. We currently support three families that align with the Causal AI textbook:
 - `Assumptions.dag`: the SCM is fully captured by a directed acyclic graph \( \mathcal{G} \). This is the default for most CausalGym domains and corresponds to standard definition of causal diagrams.
 - `Assumptions.nuc`: no unobserved confounders (NUC) guarantee independent exogenous variables.
@@ -33,7 +33,7 @@ Every `Task` carries a structural assumption that constrains how an agent may in
 
 We plan to expand the class of strucutral assumptions to also support Equivalence Class (EC) in the future.
 
-**Tasks – putting learning regimes, assumptions, policies, and rewards together**
+**Tasks – Causal Reinforcement Learning Tasks**
 `Task` (see `causal_gym/core/task.py`) is a lightweight tuple that specifies
 ```
 Task(
@@ -48,28 +48,9 @@ Task(
 - **Policy scope** (optional) restricts the policy class. If omitted, the environment’s behaviour policy's scope is treated as the default.
 - **Reward function** declares the aggregation semantics (`discount`, `average`, or `sum`).
 
-The table below mirrors Part III of the [Causal AI book](https://causalai-book.net/) and maps common research tasks to their regime/assumption pairings.
-$$
-\begin{array}{c|l|c|c|c|c|c}
-\textbf{\#} & \textbf{Task} & \textbf{Learning Regime }(\mathcal{L}) & 
-\textbf{Structural Assumptions }(\mathcal{A}) & 
-\textbf{Policy Space }(\Pi) & 
-\textbf{Reward Function }(\mathcal{R}) & 
-\textbf{SCM Envs. }(\Pi) \\
-\hline
-1 & \text{Off-policy Learning} & \text{See} & \text{NUC} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-2 & \text{Online Learning} & \text{Do} & - & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-3 & \text{Causal Identification} & \text{See} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-4 & \text{Causal Offline-to-Online Learning} & \text{See + Do} & - & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-5 & \text{Where to do \& What to look for} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{MIX}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-6 & \text{Counterfactual Decision Making} & \text{Ctf-Do} & - & \Pi_{\text{CTF}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-7 & \text{Causal Imitation Learning} & \text{See} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & - & \mathcal{M}^* \\
-8 & \text{Causally Aligned Curriculum Learning} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \{ \mathcal{M}_i \}_{i=1}^N \\
-9 & \text{Reward Shaping} & \text{See + Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y') \mapsto \mathbb{R} & \mathcal{M}^* \\
-10 & \text{Causal Game Theory} & \text{Do} & \text{DAG } \mathcal{G} & \Pi_{\text{EXP}} & \mathcal{D}_{\Delta}(Y) \mapsto \mathbb{R} & \mathcal{M}^* \\
-\end{array}
-$$
-Rows `1–3` correspond to purely observational settings (off-policy evaluation, identification, imitation). Rows `4–8` describe hybrid workflows where agents both observe and intervene to improve data collection, and `9–10` cover more open-ended objectives (reward shaping, multi-agent causal games). CausalGym ships example tasks for each so you can plug different environments into the same experimental protocol.
+The table below mirrors Part III of the [Causal AI book](https://causalai-book.net/) table 9.1.
+![tasks](tasks.png)
+Rows `1–3` correspond to standard RL & causal learning settings (off-policy evaluation, online learning, identification). Rows `4–10` describe novel causal decision making tasks. CausalGym ships example tasks for each so you can plug different environments into the same experimental protocol. 
 
 **Reward**
 Defines how cumulative returns are calculated.

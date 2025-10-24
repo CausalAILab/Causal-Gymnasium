@@ -14,3 +14,4 @@
 *.gif
 **/*.gif
 !/repo.png
+!/tasks.png

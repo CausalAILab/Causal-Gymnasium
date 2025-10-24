@@ -51,6 +51,7 @@ Task(
 The table below mirrors Part III of the [Causal AI book](https://causalai-book.net/) table 9.1.
 ![tasks](tasks.png)
 Rows `1–3` correspond to standard RL & causal learning settings (off-policy evaluation, online learning, identification). Rows `4–10` describe novel causal decision making tasks. CausalGym ships example tasks for each so you can plug different environments into the same experimental protocol. 
+(Task 8 & 10 will be supported soon.)
 
 **Reward**
 Defines how cumulative returns are calculated.

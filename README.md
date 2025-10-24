@@ -11,14 +11,14 @@ CausalGym is a Gymnasium-compatible suite for experimenting with structural caus
 - Bundles ready-to-run notebooks and scripts illustrating causal RL workflows across grid worlds, classic control, Atari games, driving simulators, and high-dimensional tasks.
 
 ## Core Concepts Explained
-![CausalGym repository overview](examples/repo.png)
+![CausalGym repository overview](https://github.com/CausalAILab/causalgym/raw/master/examples/repo.png)
 
-**Environment - Structural Causal Models (SCMs)** – Each environment subclasses `causal_gym.core.SCM`, which you can think of as a Gymnasium `Env` augmented with structural equations. An SCM specifies:
+**Environment - Structural Causal Models (SCMs)** – Each environment subclasses `causal_gym.core.SCM`, which you can think of as a Gymnasium `Env` augmented with structural equations. Each environment specifies:
 - *Endogenous variables* (state, action, reward, next state, perception, etc.) updated step-by-step via deterministic functions.
 - *Exogenous variables* sampled through `sample_u()`. These latents inject stochasticity into the system (wind gusts, random friction, etc.) and are the levers behind counterfactual reasoning.
 - *Graph structure* returned by `get_graph`, capturing how the variables causally influence one another. The graph is more than documentation. It grounds the rules that make interventions and counterfactuals well-defined.
 
-From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition `p(s', r | s, a)` in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By exposing the latents and graph, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
+From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition `p(s', r | s, a)` in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By utlizing the SCM-PCH construction, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
 
 **Interface - Pearl’s Causal Hierarchy (PCH)** – The companion `PCH` wrapper is the control panel for navigating the three interaction modalities with an SCM:
 - *Level 1 – Observing (`see`)*: The environment evolves under its built-in behaviour policy. Calling `see()` corresponds to passively logging trajectories; the info dict records the “natural action” that was taken.

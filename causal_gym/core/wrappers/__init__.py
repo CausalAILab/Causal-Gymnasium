@@ -1,1 +1,1 @@
-from .action_wrappers import MiniGridActionRemapWrapper
+from .action_wrappers import MiniGridActionRemapWrapper, Actions

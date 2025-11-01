@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType
+from causal_gym.core import ObsType, ActType, Task, Graph
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -234,43 +234,49 @@ class RaceSCM(SCM):
     def render(self) -> ObsType:
         # still need this for one-step-at-a-time simulation
         frame = self._env.render()
+        viewer = self._env.unwrapped.viewer
+        if self._env.render_mode != 'rgb_array':
+            screen = pygame.display.get_surface()
+        else:
+            screen = pygame.Surface((frame.shape[1], frame.shape[0]))
+            image_surf = pygame.surfarray.make_surface(frame.transpose(1,0,2))
+            screen.blit(image_surf, (0, 0))
+        ego = viewer.env.vehicle
+        if self.perception != 'imitator'  and getattr(self, '_D') and self._D == 1:
+            font = pygame.font.Font(None, 36)
+            text_surface = font.render("Driver is impaired", True, (255, 255, 255))
+            screen.blit(text_surface, (10, 10))
+
+        if getattr(self, '_U', []) and self._U[-1] == 1:
+            if self.perception == 'truth':
+                w, h = screen.get_size()
+                alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
+                alpha = np.clip(alpha, 0, 255).astype(np.uint8)
+
+                fog = np.empty((h, w, 4), dtype=np.uint8)
+                fog[..., :3] = 200
+                fog[...,  3] = alpha
+
+                buf = fog.tobytes()
+                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
+                screen.blit(fog_surf, (0, 0))
+
+        if getattr(self, 'W', []) and self.W[-1] == 1:
+            half_len = ego.LENGTH / 2.0
+            dx = math.cos(ego.heading) * half_len
+            dy = math.sin(ego.heading) * half_len
+            
+            x, y = viewer.sim_surface.pos2pix(ego.position[0] + dx, ego.position[1] + dy)
+            r = 4.5
+
+            rect = pygame.Rect(int(x - r), int(y - r), int(2*r), int(2*r))
+            pygame.draw.ellipse(screen, (255, 100, 0), rect)
 
         if self._env.render_mode != 'rgb_array':
-            viewer = self._env.unwrapped.viewer
-            screen = pygame.display.get_surface()
-
-            ego = viewer.env.vehicle
-            if self.perception != 'imitator'  and getattr(self, '_D') and self._D == 1:
-                font = pygame.font.Font(None, 36)
-                text_surface = font.render("Driver is impaired", True, (255, 255, 255))
-                screen.blit(text_surface, (10, 10))
-
-            if getattr(self, '_U', []) and self._U[-1] == 1:
-                if self.perception == 'truth':
-                    w, h = screen.get_size()
-                    alpha = self.rng.normal(loc=80, scale=30, size=(h, w))
-                    alpha = np.clip(alpha, 0, 255).astype(np.uint8)
-
-                    fog = np.empty((h, w, 4), dtype=np.uint8)
-                    fog[..., :3] = 200
-                    fog[...,  3] = alpha
-
-                    buf = fog.tobytes()
-                    fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
-                    screen.blit(fog_surf, (0, 0))
-
-            if getattr(self, 'W', []) and self.W[-1] == 1:
-                half_len = ego.LENGTH / 2.0
-                dx = math.cos(ego.heading) * half_len
-                dy = math.sin(ego.heading) * half_len
-                
-                x, y = viewer.sim_surface.pos2pix(ego.position[0] + dx, ego.position[1] + dy)
-                r = 4.5
-
-                rect = pygame.Rect(int(x - r), int(y - r), int(2*r), int(2*r))
-                pygame.draw.ellipse(screen, (255, 100, 0), rect)
-
             pygame.display.flip()
+        else:
+            pixels = pygame.surfarray.array3d(screen)  # shape: (width, height, 3)
+            frame = np.transpose(pixels, (1, 0, 2))   # reshape to (height, width, 3)
 
         return frame
     
@@ -326,7 +332,16 @@ class RaceSCM(SCM):
             base_graph[h1][h2] = 1
             base_graph[x1][h2] = 1
 
-        return nodes, base_graph, conf_graph
+        nodes = [{'name': n} for n in nodes.values()]
+        edges = []
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if base_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
+                if conf_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -342,10 +357,21 @@ class RacePCH(PCH):
         3. 'imitator' = hide fog and indicator
     '''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', u_prob: float = 0.2, d_prob: float = 0.5, w_probs: List[float] = [0.5, 0.4, 0.3, 0.2]):
+    def __init__(
+        self, 
+        num_steps: int = 3, 
+        config: Dict[str, Any] = None, 
+        seed: int = None, 
+        render_mode = 'human', 
+        perception = 'truth', 
+        u_prob: float = 0.2, 
+        d_prob: float = 0.5, 
+        w_probs: List[float] = [0.5, 0.4, 0.3, 0.2],
+        task: Task = Task()
+    ):
         # initialize underlying SCM
         self.env: RaceSCM = RaceSCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, u_prob=u_prob, d_prob=d_prob, w_probs=w_probs)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         D = self.env._D
@@ -359,10 +385,24 @@ class RacePCH(PCH):
             action = self.env.action(D, W, C, H)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
-        return action, obs, reward, terminated, truncated, info
+        info['natural_action'] = action
+        return obs, reward, terminated, truncated, info
 
-    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action, show_reward=show_reward)
+    # Interventional step with forced action
+    def do(self, do_policy, show_reward = False):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        info['action'] = action
+        return o, r, term, trunc, info
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

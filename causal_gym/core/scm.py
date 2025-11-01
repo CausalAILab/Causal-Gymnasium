@@ -124,12 +124,11 @@ class SCM(
         self._np_random = value
     
     @property
-    def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
+    def get_graph(self,) :#-> tuple[dict[int, str], list[list[int]], list[list[int]]]:
         """Return the causal diagram of the environment.
         Returns:
             Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
             base_graph: an extended adjacent matrix representation of the directed graphical structure.  
-                G[i,j] = -1 i<-j
                 G[i,j] = 0 i j
                 G[i,j] = 1 i->j
             conf_graph: a matrix representing the existence of confounders between nodes.

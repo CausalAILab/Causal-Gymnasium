@@ -5,12 +5,13 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Generic, SupportsFloat, TypeVar, Union
 
 from collections import namedtuple
-from gymnasium import Env, Wrapper
+from gymnasium import Env, Wrapper, Space
 if TYPE_CHECKING:
     from gymnasium.envs.registration import EnvSpec, WrapperSpec
 
 from .scm import SCM
 from .types import *
+from .task import Assumptions, LearningRegime, Task
 
 
 class PCH(    
@@ -30,18 +31,62 @@ class PCH(
             env: The environment to wrap
         """
         self.env: SCM
+        self._policy: WrapperPolicyType
+        self.task: Task = kwargs.get("task", Task())
 
         assert isinstance(self.env.unwrapped, SCM) or isinstance(self.env.unwrapped, Env)
         Wrapper.__init__(self, self.env)
 
-        self._policy: WrapperPolicyType | None = None
+    def _permission_check(self, name):
+        """Checks if the user has the right permission. Override this method as needed."""
+        if (name == "see" and self.task.learning_regime not in [LearningRegime.see, LearningRegime.cool, LearningRegime.ctf_do, LearningRegime.see_do])\
+            or (name == "do" and self.task.learning_regime not in [LearningRegime.do, LearningRegime.cool, LearningRegime.ctf_do, LearningRegime.see_do])\
+            or (name == "ctf_do" and self.task.learning_regime not in [LearningRegime.ctf_do])\
+            or (name == "step" and self.task.assumptions not in [Assumptions.nuc, Assumptions.markov]):
+            raise PermissionError(f"You do not have permission to perform {name}(...) under task {self.task}.")
+        
 
+    def __getattribute__(self, name):
+        # List of methods to protect (skip special/private and internal attributes)
+        protected_methods = [
+            "see", "do", "ctf_do", "step"
+        ]
+        prohibited_methods = [
+            "action", "observation", "policy"
+        ]
+        # Don't allow access to dunder methods and private attributes
+        if name == "_permission_check":
+            return object.__getattribute__(self, name)
+        if name.startswith("__") or name.startswith("_"):
+            raise AttributeError(f"Access to private or protected attribute '{name}' is not allowed.")
+        if name in prohibited_methods:
+            raise PermissionError(f"You do not have permission to perform {name}(...).")
+        attr = object.__getattribute__(self, name)
+        if callable(attr) and name in protected_methods:
+            def wrapper(*args, **kwargs):
+                self._permission_check(name)
+                return attr(*args, **kwargs)
+            return wrapper
+        return attr
+    
+    def __getattr__(self, name: str) -> Any:
+        if name == "_np_random":
+            raise AttributeError(
+                "Can't access `_np_random` of a wrapper, use `self.unwrapped._np_random` or `self.np_random`."
+            )
+        elif name.startswith("_"):
+            raise AttributeError(f"accessing private attribute '{name}' is prohibited")
+        if hasattr(self.env, name):
+            return getattr(self.env, name)
+        else:
+            return self.env.__getattr__(name)
 
-    def see(self) -> tuple[ActType, ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+    def see(
+        self, see_policy: PolicyType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics following the behavior policy.
 
         Returns:
-            action (ActType): a realized action following the behavior policy.
             observation (ObsType): An element of the environment's :attr:`observation_space` as the next observation due to the agent actions.
                 An example is a numpy array containing the positions and velocities of the pole in CartPole.
             reward (SupportsFloat): The reward as a result of taking the action.
@@ -57,6 +102,7 @@ class PCH(
                 hidden from observations, or individual reward terms that are combined to produce the total reward.
                 In OpenAI Gym <v26, it contains "TimeLimit.truncated" to distinguish truncation and termination,
                 however this is deprecated in favour of returning terminated and truncated variables.
+                action (ActType): a realized action following the behavior policy. Will also be included in the info.
             done (bool): (Deprecated) A boolean value for if the episode has ended, in which case further :meth:`step` calls will
                 return undefined results. This was removed in OpenAI Gym v26 in favor of terminated and truncated attributes.
                 A done signal may be emitted for different reasons: Maybe the task underlying the environment was solved successfully,
@@ -65,7 +111,7 @@ class PCH(
         raise NotImplementedError
 
     def do(
-        self, action: ActType
+        self, do_policy: PolicyType
     ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
         """Run one timestep of the environment's dynamics using the agent actions.
 
@@ -98,6 +144,11 @@ class PCH(
         """  
         raise NotImplementedError
     
+    def ctf_do(
+        self, ctf_policy: PolicyType
+    ) -> tuple[ObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+        raise NotImplementedError
+    
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
         """For the ease of interaction. 
         We add this to avoid calling PCH.env.reset()
@@ -119,7 +170,7 @@ class PCH(
 class PCHWrapper(
     PCH[WrapperPolicyType, WrapperObsType, WrapperActType, PolicyType, ObsType, ActType]
 ):
-    """Wraps a :class:`causal_gym.PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
+    """Wraps a :class:`PCH` to allow a modular transformation of the :meth:`see`, :meth:`do`, :meth:`action`, and :meth:`observation' methods.
 
     This class is the base class of all wrappers to change the behavior of the underlying SCM.
     PCHWrappers that inherit from this class can modify the :attr:`action_space`, :attr:`observation_space`,
@@ -284,7 +335,7 @@ class ActionPCHWrapper(
 
     If you would like to apply a function to the action before passing it to the base environment,
     you can simply inherit from :class:`ActionPCHWrapper` and overwrite the method  :meth:`wrap_action` and :meth:`unwrap_action` to implement
-    that transformation. The transformation defined in that method must take values in the base environment’s
+    that transformation. The transformation defined in that method must take values in the base environment's
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
     the :meth:`__init__` method of your wrapper.
@@ -292,6 +343,7 @@ class ActionPCHWrapper(
 
     def __init__(self, env: SCM[PolicyType, ObsType, ActType]):
         """Constructor for the action wrapper."""
+        self.action_space: Space
         PCHWrapper.__init__(self, env)
 
     def step(
@@ -330,7 +382,7 @@ class PolicyPCHWrapper(
 
     If you would like to deploy a policy to the base environment,
     you can simply inherit from :class:`PolicyPCHWrapper` and overwrite the method  :meth:`action` and :meth:`see` to implement
-    that transformation. The policy defined in that method must take values in the base environment’s
+    that transformation. The policy defined in that method must take values in the base environment's
     action space. However, its domain might differ from the original action space.
     In that case, you need to specify the new action space of the wrapper by setting :attr:`self.action_space` in
     the :meth:`__init__` method of your wrapper.

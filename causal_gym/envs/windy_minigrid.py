@@ -15,7 +15,7 @@ from minigrid.utils.rendering import (
 )
 from minigrid.core.constants import OBJECT_TO_IDX, TILE_PIXELS
 
-from ..core import PolicyType, ActType, ObsType, SCM, PCH
+from ..core import PolicyType, ActType, ObsType, SCM, PCH, Task, Graph
 from .constants import WIND_ICONS, COIN_IMG, FLAG_IMG, ROBO_IMG
 
 
@@ -146,21 +146,40 @@ class WindyMiniGridSCM(SCM):
     def wind_dir(self, new_dir):
         self._wind_direction = new_dir
 
+    # Causal graph -------------------------------------------------------
     @property
-    def get_graph(self,) -> tuple[dict[int, str], list[list[int]], list[list[int]]]:
+    def get_graph(self):
         """Return the causal diagram of the environment.
         Returns:
             Nodes: a dictionary mapping from node index ([0, N-1]) to each node's semantic meaning.
             base_graph: an extended adjacent matrix representation of the directed graphical structure.  
-                G[i,j] = -1 i<-j
                 G[i,j] = 0 i j
                 G[i,j] = 1 i->j
             conf_graph: a matrix representing the existence of confounders between nodes.
                 G[i, j] = 0 no confounder
                 G[i, j] = 1 i<->j
         """
-        # TODO: find a way to automatically generate graph from code?
-        raise NotImplementedError
+        nodes = [
+            # {'name': 'U', 'label': 'Wind', 'type': 'latent'},
+            {'name': 'S', 'label': 'State'},
+            {'name': 'X', 'label': 'Action'},
+            {'name': 'Y', 'label': 'Reward'},
+            {'name': "S'", 'label': 'Next State'}
+        ]
+
+        edges = [
+            # {'from_': 'U', 'to_': 'X', 'type_': 'directed'},
+            # {'from_': 'U', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'X', 'type_': 'directed'},
+            {'from_': 'S', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
+            {'from_': 'S', 'to_': "S'", 'type_': 'directed'},
+            {'from_': 'X', 'to_': "S'", 'type_': 'directed'},
+            # Bidirected confounding between Action and Next State
+            {'from_': 'X', 'to_': "S'", 'type_': 'bidirected'}
+        ]
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     def action(self):
         """sample action from the behavioral policy
@@ -323,10 +342,17 @@ class WindyMiniGridPCH(PCH):
     """PCH for WindyMiniGridSCM.
     """
 
-    def __init__(self, env: MiniGridEnv, policy:PolicyType = None, show_wind: bool=False, wind_dist: Union[tuple, Callable] = WIND_DIST):
+    def __init__(
+        self, 
+        env: MiniGridEnv, 
+        policy:PolicyType = None, 
+        show_wind: bool = False, 
+        wind_dist: Union[tuple, Callable] = WIND_DIST,
+        task: Task = Task()
+    ):
         self.env = WindyMiniGridSCM(env, policy, show_wind, wind_dist)
         self.state_space = [env.unwrapped.width, env.unwrapped.height]
-        PCH.__init__(self)
+        super().__init__(task=task)
         # print(getattr(self, 'state_space'))
 
     def __getattr__(self, name: str) -> Any:
@@ -375,10 +401,23 @@ class WindyMiniGridPCH(PCH):
         else:
             action = self.env.action()
         s, y, terminated, truncated, info  = self.env.step(action)
-        return action, s, y, terminated, truncated, info 
+        info['natural_action'] = action
+        return s, y, terminated, truncated, info 
     
-    def do(self, action):
-        return self.env.step(action)
+    def do(self, do_policy):
+        action = do_policy(self.env.agent_pos)
+        s, y, term, trunc, info = self.env.step(action)
+        info['action'] = action
+        return s, y, term, trunc, info
+
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return obs, r, terminated, truncated, info
     
     def render(self):
         return self.env.render()

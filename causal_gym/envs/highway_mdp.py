@@ -4,7 +4,7 @@ from typing import Any, Tuple, Dict, List
 import pygame
 
 from causal_gym import SCM, PCH
-from causal_gym.core import ObsType, ActType
+from causal_gym.core import ObsType, ActType, Task, Graph
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -512,7 +512,16 @@ class HighwayMDPSCM(SCM):
             base_graph[x][x2] = 1 # expert uses previous action for lane inference
             base_graph[l][x2] = 1 # expert cross-checks lane readings with prev action
 
-        return nodes, base_graph, conf_graph
+        nodes = [{'name': n} for n in nodes.values()]
+        edges = []
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if base_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
+                if conf_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -528,10 +537,22 @@ class HighwayMDPPCH(PCH):
         3. 'imitator' = hide fog and indicator
     '''
 
-    def __init__(self, num_steps: int = 3, config: Dict[str, Any] = None, seed: int = None, render_mode = 'human', perception = 'truth', l_dist: List[float] = [0.2, 0.6, 0.2], u_prob: float = 0.2, i_prob: float = 0.9, w_probs: List[float] = [0.9, 0.6, 0.4, 0.1]):
+    def __init__(
+        self, 
+        num_steps: int = 3, 
+        config: Dict[str, Any] = None, 
+        seed: int = None, 
+        render_mode = 'human', 
+        perception = 'truth', 
+        l_dist: List[float] = [0.2, 0.6, 0.2], 
+        u_prob: float = 0.2,
+        i_prob: float = 0.9, 
+        w_probs: List[float] = [0.9, 0.6, 0.4, 0.1], 
+        task: Task = Task()
+    ):
         # initialize underlying SCM
         self.env: HighwayMDPSCM = HighwayMDPSCM(num_steps=num_steps, config=config, seed=seed, render_mode=render_mode, perception=perception, l_dist=l_dist, u_prob=u_prob, i_prob=i_prob, w_probs=w_probs)
-        super().__init__()
+        super().__init__(task=task)
 
     def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         X = self.env.X
@@ -548,10 +569,24 @@ class HighwayMDPPCH(PCH):
             action = self.env.action(X, D, L, _I, A, B, W)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
-        return action, obs, reward, terminated, truncated, info
+        info['natural_action'] = action
+        return obs, reward, terminated, truncated, info
 
-    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action, show_reward=show_reward)
+    # Interventional step with forced action
+    def do(self, do_policy, show_reward = False):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        info['action'] = action
+        return o, r, term, trunc, info
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)

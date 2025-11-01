@@ -14,3 +14,4 @@ class PolicyScope(namedtuple('PolicyScope', ['act', 'obs'])):
     def __new__(cls, act:list[ActType]=[], obs:list[ObsType]=[]):
         return super(PolicyScope, cls).__new__(cls, act, obs)
     
+# class MixedPolicy():

@@ -4,7 +4,7 @@ from numpy.typing import NDArray
 
 from typing import Dict, Optional, List, Tuple, Any
 from causal_gym import SCM, PCH
-from causal_gym.core import ActType
+from causal_gym.core import ActType, Graph
 
 class AntMazeSCM(SCM):
     def __init__(self, env_id: str = 'antmaze-large-navigate-v0', num_steps: int = 1000, seed: Optional[int] = None):
@@ -113,27 +113,35 @@ class AntMazeSCM(SCM):
         self._env.close()
 
     @property
-    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
-        variables = ['P', 'O', 'A', 'L', 'T', 'J', 'X']
-        n = (self.num_steps) * len(variables) + 1
+    def get_graph(self) -> Graph:
+        state_vars = ['P', 'O', 'A', 'L', 'T', 'J']
+        variables = state_vars + ['X']
+        H = self.num_steps
+        n = H * len(variables) + len(state_vars) + 1
 
         nodes = {}
         i = 0
-        for t in range(self.num_steps):
+        for t in range(H):
             for v in variables:
                 nodes[i] = f'{v}{t}'
                 i += 1
 
-        nodes[i] = f'Y{self.num_steps}' # ensures Y comes last in temporal ordering
+        # terminal state
+        for v in state_vars:
+            nodes[i] = f'{v}{H}'
+            i += 1
+
+        nodes[i] = f'Y{H}' # ensures Y comes last in temporal ordering
 
         base_graph = [[0]*n for _ in range(n)]
         conf_graph = [[0]*n for _ in range(n)]
 
+        y = n - 1
+
         # intra-timestep edges
-        for t in range(self.num_steps):
-            base = t * len(variables)
+        for step in range(H):
+            base = step * len(variables)
             p, o, a, l, t, j, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
-            y = n - 1
 
             base_graph[j][a] = 1 # joint angular velocities affect joint angles
             base_graph[j][t] = 1 # joint angular velocities affect torso angular velocity
@@ -160,10 +168,29 @@ class AntMazeSCM(SCM):
 
             # TODO conf_graph
 
+        # intra-timestep edges for terminal state
+        base_term = H * len(variables)
+        p, o, a, l, t, j = base_term, base_term + 1, base_term + 2, base_term + 3, base_term + 4, base_term + 5
+
+        base_graph[j][a] = 1 # joint angular velocities affect joint angles
+        base_graph[j][t] = 1 # joint angular velocities affect torso angular velocity
+        base_graph[j][l] = 1 # joint angular velocities affect torso linear velocity
+
+        base_graph[t][o] = 1 # torso angular velocity affects torso orientation
+
+        base_graph[a][o] = 1 # joint angles affect torso orientation
+        base_graph[a][l] = 1 # joint angles affect torso linear velocity
+
+        base_graph[o][l] = 1 # torso orientation affects torso linear velocity
+
+        base_graph[l][p] = 1 # torso linear velocity affects position
+
+        base_graph[p][y] = 1 # reward is based on position
+
         # inter-timstep edges
-        for t in range(self.num_steps - 1):
-            base = t * len(variables)
-            base_next = (t + 1) * len(variables)
+        for step in range(H):
+            base = step * len(variables)
+            base_next = (step + 1) * len(variables)
 
             p, o, a, l, t, j, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
             p2, o2, a2, l2, t2, j2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6
@@ -178,7 +205,17 @@ class AntMazeSCM(SCM):
             base_graph[t][t2] = 1
             base_graph[j][j2] = 1
 
-        return nodes, base_graph, conf_graph
+        nodes = [{'name': n} for n in nodes.values()]
+        edges = []
+        for i in range(len(nodes)):
+            for j in range(len(nodes)):
+                if base_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'directed'})
+                if conf_graph[i][j] == 1:
+                    edges.append({'from_': nodes[i]['name'], 'to_': nodes[j]['name'], 'type_': 'bidirected'})
+        graph = Graph(nodes=nodes, edges=edges)
+        return graph
+
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
@@ -204,20 +241,34 @@ class AntMazePCH(PCH):
             action = self.env.action(P, O, A, L, T, J)
 
         obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
-        return action, obs, reward, terminated, truncated, info
+        info['natural_action'] = action
+        return obs, reward, terminated, truncated, info
 
-    def do(self, action: Any, show_reward = False) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        return self.env.step(action, show_reward=show_reward)
-
+    # Interventional step with forced action
+    def do(self, do_policy, show_reward = False):
+        action = do_policy(self.env.observation())
+        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        info['action'] = action
+        return o, r, term, trunc, info
+    
+    # Counterfactual policy intervention
+    def ctf_do(self, ctf_policy):
+        intuition = self.env.action()
+        action = ctf_policy(self.env.observation(), intuition)
+        obs, r, terminated, truncated, info = self.env.step(action)
+        info['natural_action'] = intuition
+        info['action'] = action
+        return obs, r, terminated, truncated, info
+    
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
         return self.env.reset(seed=seed)
 
     def render(self) -> Any:
         return self.env.render()
-
+    
     def close(self) -> None:
         self.env.close()
-
+    
     @property
-    def get_graph(self) -> Tuple[Dict[int, str], list[list[int]], list[list[int]]]:
+    def get_graph(self) -> Graph:
         return self.env.get_graph

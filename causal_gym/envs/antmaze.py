@@ -5,9 +5,10 @@ from numpy.typing import NDArray
 from typing import Dict, Optional, List, Tuple, Any
 from causal_gym import SCM, PCH
 from causal_gym.core import ActType, Graph
+from gymnasium import spaces
 
 class AntMazeSCM(SCM):
-    def __init__(self, env_id: str = 'antmaze-large-navigate-v0', num_steps: int = 1000, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-v0', num_steps: int = 1000, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -17,7 +18,7 @@ class AntMazeSCM(SCM):
         self._env = ogbench.make_env_and_datasets(env_id, env_only=True, max_episode_steps = num_steps)
         self._env.reset(seed=seed)
 
-        self.P = [] # position, 3-dimensional vector of x,y,z in terms of goal
+        self.P = [] # position, 3-dimensional vector of x,y,z
         self.O = [] # torso orientation, 4-dimensional quaternion x,y,z,w
         self.A = [] # joint angles, 8-dimensional vector
         self.L = [] # torso linear velocity, 3-dimensional vector of x,y,z
@@ -27,7 +28,18 @@ class AntMazeSCM(SCM):
         self._Y = [] # sparse reward
 
         self.action_space = self._env.action_space # Box(-1.0, 1.0, (8,), float32)
-        self.observation_space = self._env.observation_space
+        
+        act_low  = np.asarray(self.action_space.low, dtype=self.action_space.dtype)
+        act_high = np.asarray(self.action_space.high, dtype=self.action_space.dtype)
+        self.observation_space = spaces.Dict({
+            'P': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
+            'O': spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float64),
+            'A': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
+            'L': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
+            'T': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
+            'J': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
+            'X': spaces.Box(low=-act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
+        })
         '''
         Observation space details:
         Box(-inf, inf, (29,), float64)
@@ -57,16 +69,25 @@ class AntMazeSCM(SCM):
     def _J(self) -> NDArray[np.float64]:
         return self._env.env.env.env.get_ob()[21:29]
 
-    def observation(self) -> Dict[str, List[List[float]]]:
-        return {'P': self.P,
-                'O': self.O,
-                'A': self.A,
-                'L': self.L,
-                'T': self.T,
-                'J': self.J,
-                'X': self.X}
+    def observation(self, history: bool = False) -> Dict[str, List[List[float]]]:
+        if history:
+            return {'P': self.P,
+                    'O': self.O,
+                    'A': self.A,
+                    'L': self.L,
+                    'T': self.T,
+                    'J': self.J,
+                    'X': self.X}
 
-    def reset(self, seed: Optional[int] = None):
+        return {'P': self.P[-1],
+                'O': self.O[-1],
+                'A': self.A[-1],
+                'L': self.L[-1],
+                'T': self.T[-1],
+                'J': self.J[-1],
+                'X': self.X[-1] if len(self.X) > 0 else np.zeros(self.action_space.shape, dtype=np.float64)}
+
+    def reset(self, history: bool = False, seed: Optional[int] = None):
         self.rng = np.random.default_rng(seed)
         env_obs, env_info = self._env.reset()
 
@@ -80,7 +101,7 @@ class AntMazeSCM(SCM):
         self.X = []
         self._Y = []
 
-        obs = self.observation()
+        obs = self.observation(history=history)
         info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, info
 
@@ -88,8 +109,9 @@ class AntMazeSCM(SCM):
         # placeholder behavior policy
         return self.action_space.sample()
 
-    def step(self, action: Any, show_reward: bool = False) -> Tuple[dict, float, bool, bool, dict]:
-        self.X.append(action)
+    def step(self, action: Any, history: bool = False, show_reward: bool = True) -> Tuple[dict, float, bool, bool, dict]:
+        # actions are float32, but observed actions need to be float64
+        self.X.append(np.asarray(action, dtype=np.float64))
 
         env_obs, reward, terminated, truncated, env_info = self._env.step(action)
         self._Y.append(reward)
@@ -102,7 +124,7 @@ class AntMazeSCM(SCM):
         self.T.append(self._T())
         self.J.append(self._J())
 
-        obs = self.observation()
+        obs = self.observation(history=history)
         info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
         return obs, reward if show_reward else None, terminated, truncated, info
 
@@ -227,7 +249,7 @@ class AntMazePCH(PCH):
         self.env = AntMazeSCM(num_steps=num_steps, seed=seed)
         super().__init__()
 
-    def see(self, behavioral_policy=None, show_reward = False) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
+    def see(self, behavioral_policy=None, show_reward = True) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         P = self.env.P
         O = self.env.O
         A = self.env.A
@@ -240,14 +262,14 @@ class AntMazePCH(PCH):
         else:
             action = self.env.action(P, O, A, L, T, J)
 
-        obs, reward, terminated, truncated, info = self.env.step(action, show_reward=show_reward)
+        obs, reward, terminated, truncated, info = self.env.step(action, history=True, show_reward=show_reward)
         info['natural_action'] = action
         return obs, reward, terminated, truncated, info
 
     # Interventional step with forced action
-    def do(self, do_policy, show_reward = False):
+    def do(self, do_policy, show_reward = True):
         action = do_policy(self.env.observation())
-        o, r, term, trunc, info = self.env.step(action, show_reward=show_reward)
+        o, r, term, trunc, info = self.env.step(action, history=True, show_reward=show_reward)
         info['action'] = action
         return o, r, term, trunc, info
     
@@ -261,7 +283,7 @@ class AntMazePCH(PCH):
         return obs, r, terminated, truncated, info
     
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
-        return self.env.reset(seed=seed)
+        return self.env.reset(history=True, seed=seed)
 
     def render(self) -> Any:
         return self.env.render()

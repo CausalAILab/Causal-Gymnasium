@@ -2,17 +2,18 @@ import ogbench
 import numpy as np
 from numpy.typing import NDArray
 
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, Optional, List, Tuple, Any, Set
 from causal_gym import SCM, PCH
 from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 class AntMazeSCM(SCM):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-v0', num_steps: int = 1000, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
+        self.hidden_dims = hidden_dims if hidden_dims is not None else set()
         self._t = 0
 
         self._env = ogbench.make_env_and_datasets(env_id, env_only=True, max_episode_steps = num_steps)
@@ -29,17 +30,21 @@ class AntMazeSCM(SCM):
 
         self.action_space = self._env.action_space # Box(-1.0, 1.0, (8,), float32)
         
+        # build appropriate observation space
         act_low  = np.asarray(self.action_space.low, dtype=self.action_space.dtype)
         act_high = np.asarray(self.action_space.high, dtype=self.action_space.dtype)
-        self.observation_space = spaces.Dict({
+
+        full_obs = {
             'P': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'O': spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float64),
             'A': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
             'L': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'T': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'J': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
-            'X': spaces.Box(low=-act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
-        })
+            'X': spaces.Box(low=act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
+        }
+
+        self.observation_space = spaces.Dict({k: v for k, v in full_obs.items() if k not in self.hidden_dims})
         '''
         Observation space details:
         Box(-inf, inf, (29,), float64)
@@ -69,23 +74,41 @@ class AntMazeSCM(SCM):
     def _J(self) -> NDArray[np.float64]:
         return self._env.env.env.env.get_ob()[21:29]
 
-    def observation(self, history: bool = False) -> Dict[str, List[List[float]]]:
-        if history:
-            return {'P': self.P,
-                    'O': self.O,
-                    'A': self.A,
-                    'L': self.L,
-                    'T': self.T,
-                    'J': self.J,
-                    'X': self.X}
+    def observation(self, history: bool = False) -> Dict[str, Any]:
+        obs = {}
 
-        return {'P': self.P[-1],
-                'O': self.O[-1],
-                'A': self.A[-1],
-                'L': self.L[-1],
-                'T': self.T[-1],
-                'J': self.J[-1],
-                'X': self.X[-1] if len(self.X) > 0 else np.zeros(self.action_space.shape, dtype=np.float64)}
+        if history:
+            if 'P' not in self.hidden_dims:
+                obs['P'] = self.P
+            if 'O' not in self.hidden_dims:
+                obs['O'] = self.O
+            if 'A' not in self.hidden_dims:
+                obs['A'] = self.A
+            if 'L' not in self.hidden_dims:
+                obs['L'] = self.L
+            if 'T' not in self.hidden_dims:
+                obs['T'] = self.T
+            if 'J' not in self.hidden_dims:
+                obs['J'] = self.J
+            if 'X' not in self.hidden_dims:
+                obs['X'] = self.X
+        else:
+            if 'P' not in self.hidden_dims:
+                obs['P'] = self.P[-1]
+            if 'O' not in self.hidden_dims:
+                obs['O'] = self.O[-1]
+            if 'A' not in self.hidden_dims:
+                obs['A'] = self.A[-1]
+            if 'L' not in self.hidden_dims:
+                obs['L'] = self.L[-1]
+            if 'T' not in self.hidden_dims:
+                obs['T'] = self.T[-1]
+            if 'J' not in self.hidden_dims:
+                obs['J'] = self.J[-1]
+            if 'X' not in self.hidden_dims:
+                obs['X'] = self.X[-1] if len(self.X) > 0 else np.zeros(self.action_space.shape, dtype=np.float64)
+
+        return obs
 
     def reset(self, history: bool = False, seed: Optional[int] = None):
         self.rng = np.random.default_rng(seed)
@@ -102,7 +125,23 @@ class AntMazeSCM(SCM):
         self._Y = []
 
         obs = self.observation(history=history)
-        info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+        hiddens = {}
+        if 'P' in self.hidden_dims:
+            hiddens['P'] = self.P
+        if 'O' in self.hidden_dims:
+            hiddens['O'] = self.O
+        if 'A' in self.hidden_dims:
+            hiddens['A'] = self.A
+        if 'L' in self.hidden_dims:
+            hiddens['L'] = self.L
+        if 'T' in self.hidden_dims:
+            hiddens['T'] = self.T
+        if 'J' in self.hidden_dims:
+            hiddens['J'] = self.J
+        if 'X' in self.hidden_dims:
+            hiddens['X'] = self.X
+
+        info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info, 'hidden_obs': hiddens}
         return obs, info
 
     def action(self, P: List[NDArray[np.float64]], O: List[NDArray[np.float64]], A: List[NDArray[np.float64]], L: List[NDArray[np.float64]], T: List[NDArray[np.float64]], J: List[NDArray[np.float64]]) -> ActType:
@@ -125,7 +164,24 @@ class AntMazeSCM(SCM):
         self.J.append(self._J())
 
         obs = self.observation(history=history)
-        info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info}
+
+        hiddens = {}
+        if 'P' in self.hidden_dims:
+            hiddens['P'] = self.P
+        if 'O' in self.hidden_dims:
+            hiddens['O'] = self.O
+        if 'A' in self.hidden_dims:
+            hiddens['A'] = self.A
+        if 'L' in self.hidden_dims:
+            hiddens['L'] = self.L
+        if 'T' in self.hidden_dims:
+            hiddens['T'] = self.T
+        if 'J' in self.hidden_dims:
+            hiddens['J'] = self.J
+        if 'X' in self.hidden_dims:
+            hiddens['X'] = self.X
+
+        info = {'Y': self._Y, 'env_obs': env_obs, 'env_info': env_info, 'hidden_obs': hiddens}
         return obs, reward if show_reward else None, terminated, truncated, info
 
     def render(self):
@@ -241,12 +297,15 @@ class AntMazeSCM(SCM):
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
-        return ['P', 'O', 'A', 'L', 'T', 'J', 'X'], ['Y']
+        all_vars = ['P', 'O', 'A', 'L', 'T', 'J', 'X']
+        observed = [v for v in all_vars if v not in self.hidden_dims]
+        unobserved = list(self.hidden_dims) + ['Y']
+        return observed, unobserved
 
 class AntMazePCH(PCH):
-    def __init__(self, env_id: str = 'antmaze-large-navigate-v0', num_steps: int = 1000, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-large-navigate-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, seed: Optional[int] = None):
         # initialize underlying SCM
-        self.env = AntMazeSCM(num_steps=num_steps, seed=seed)
+        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, seed=seed)
         super().__init__()
 
     def see(self, behavioral_policy=None, show_reward = True) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
@@ -275,7 +334,14 @@ class AntMazePCH(PCH):
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
-        intuition = self.env.action()
+        P = self.env.P
+        O = self.env.O
+        A = self.env.A
+        L = self.env.L
+        T = self.env.T
+        J = self.env.J
+
+        intuition = self.env.action(P, O, A, L, T, J)
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition

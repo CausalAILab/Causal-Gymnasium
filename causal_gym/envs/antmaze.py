@@ -404,6 +404,8 @@ class AntMazePCH(PCH):
         self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, seed=seed)
         super().__init__()
 
+        self.last_actor_is_expert = True
+
     def see(self, behavioral_policy=None, show_reward=True) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
         P = self.env.P
         O = self.env.O
@@ -419,6 +421,8 @@ class AntMazePCH(PCH):
 
         obs, reward, terminated, truncated, info = self.env.step(action, history=True, show_reward=show_reward)
         info['natural_action'] = action
+
+        self.last_actor_is_expert = True
         return obs, reward, terminated, truncated, info
 
     # Interventional step with forced action
@@ -426,6 +430,8 @@ class AntMazePCH(PCH):
         action = do_policy(self.env.observation(history=True))
         o, r, term, trunc, info = self.env.step(action, history=True, show_reward=show_reward)
         info['action'] = action
+
+        self.last_actor_is_expert = False
         return o, r, term, trunc, info
 
     # Counterfactual policy intervention
@@ -442,10 +448,14 @@ class AntMazePCH(PCH):
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
         info['action'] = action
+
+        self.last_actor_is_expert = False
         return obs, r, terminated, truncated, info
 
     def reset(self, *, seed: int = None) -> Tuple[Any, dict]:
-        self.expert.reset()
+        if self.last_actor_is_expert:
+            self.expert.reset()
+
         return self.env.reset(history=True, seed=seed)
 
     def render(self) -> Any:

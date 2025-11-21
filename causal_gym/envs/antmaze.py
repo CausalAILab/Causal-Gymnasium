@@ -8,7 +8,7 @@ from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 class AntMazeSCM(SCM):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
@@ -17,7 +17,9 @@ class AntMazeSCM(SCM):
         self._t = 0
 
         self._env = ogbench.make_env_and_datasets(env_id, env_only=True, max_episode_steps=num_steps)
-        self._env.reset(seed=seed)
+        _, info = self._env.reset(seed=seed)
+        self._goal_xy = info['goal'][:2]
+        self.success_radius = success_radius
 
         self.P = [] # position, 3-dimensional vector of x,y,z
         self.O = [] # torso orientation, 4-dimensional quaternion x,y,z,w
@@ -148,12 +150,24 @@ class AntMazeSCM(SCM):
         # placeholder behavior policy
         return self.action_space.sample()
 
+    def reward(self) -> float:
+        ag = np.asarray(self.P[-1][:2], dtype=np.float64)
+        dg = np.asarray(self._goal_xy, dtype=np.float64)
+
+        diff = ag - dg
+        if diff.ndim == 1:
+            dist = np.linalg.norm(diff)
+        else:
+            dist = np.linalg.norm(diff, axis=-1)
+
+        success = (dist <= self.success_radius).astype(np.float64)
+        return -1.0 + success
+
     def step(self, action: Any, history: bool = False, show_reward: bool = True) -> Tuple[dict, float, bool, bool, dict]:
         # actions are float32, but observed actions need to be float64
         self.X.append(np.asarray(action, dtype=np.float64))
 
         env_obs, reward, terminated, truncated, env_info = self._env.step(action)
-        self._Y.append(reward)
 
         self._t += 1
         self.P.append(self._P())
@@ -162,6 +176,9 @@ class AntMazeSCM(SCM):
         self.L.append(self._L())
         self.T.append(self._T())
         self.J.append(self._J())
+
+        reward = self.reward()
+        self._Y.append(reward)
 
         obs = self.observation(history=history)
 
@@ -302,7 +319,7 @@ class AntMazeSCM(SCM):
         return observed, unobserved
 
 class AntMazeExpert:
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, goal_xy: np.ndarray = np.array([20.0, 20.0]), seed: Optional[int] = None):
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
 
@@ -312,6 +329,9 @@ class AntMazeExpert:
         self.num_eps = len(self._expert_trajs['observations']) // 1000
         self._ep = -1
         self._t = 0
+
+        self.success_radius = success_radius
+        self._goal_xy = goal_xy
 
         self.hidden_dims = hidden_dims if hidden_dims is not None else set()
 
@@ -359,11 +379,23 @@ class AntMazeExpert:
         self.X = []
         self._Y = []
 
+    def reward(self) -> float:
+        ag = np.asarray(self.P[-1][:2], dtype=np.float64)
+        dg = np.asarray(self._goal_xy, dtype=np.float64)
+
+        diff = ag - dg
+        if diff.ndim == 1:
+            dist = np.linalg.norm(diff)
+        else:
+            dist = np.linalg.norm(diff, axis=-1)
+
+        success = (dist <= self.success_radius).astype(np.float64)
+        return -1.0 + success
+
     def step(self):
         obs = self._expert_trajs['observations'][self._t]
         action = self._expert_trajs['actions'][self._t].astype(np.float64)
 
-        reward = self._expert_trajs['rewards'][self._t]
         terminated = self._expert_trajs['terminals'][self._t]
         truncated = False # never happens in an OGBench dataset
 
@@ -374,6 +406,8 @@ class AntMazeExpert:
         self.T.append(obs[18:21])
         self.J.append(obs[21:29])
         self.X.append(action)
+        
+        reward = self.reward()
         self._Y.append(reward)
 
         hiddens = {}
@@ -398,10 +432,10 @@ class AntMazeExpert:
         return self.observation(), reward, terminated, truncated, info
 
 class AntMazePCH(PCH):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, seed: Optional[int] = None):
         # initialize underlying SCM
-        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, seed=seed)
-        self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, seed=seed)
+        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, success_radius=success_radius, seed=seed)
+        self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, success_radius=success_radius, goal_xy=self.env._goal_xy, seed=seed)
         super().__init__()
 
         self.last_actor_is_expert = True

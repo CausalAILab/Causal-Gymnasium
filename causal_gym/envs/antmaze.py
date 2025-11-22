@@ -241,13 +241,19 @@ class AntMazeSCM(SCM):
     def action(self, P: List[NDArray[np.float64]], O: List[NDArray[np.float64]], A: List[NDArray[np.float64]], L: List[NDArray[np.float64]], T: List[NDArray[np.float64]], J: List[NDArray[np.float64]], F: List[NDArray[np.float64]], W: List[NDArray[np.float64]]) -> ActType:
         # placeholder behavior policy
         return self.action_space.sample()
+    
+    def compute_success(self) -> bool:
+        ag = np.asarray(self.P[-1][:2], dtype=np.float64)
+        dg = np.asarray(self._goal_xy, dtype=np.float64)
+        diff = ag - dg
+        dist = np.linalg.norm(diff)
+        return dist <= self.success_radius
 
     def _reward(self) -> float:
         ag = np.asarray(self.P[-1][:2], dtype=np.float64)
         dg = np.asarray(self._goal_xy, dtype=np.float64)
         diff = ag - dg
         dist = np.linalg.norm(diff)
-        success = (dist <= self.success_radius).astype(np.float64)
 
         # wind penalty
         u_norm = float(np.linalg.norm(self._U[-1]))
@@ -255,7 +261,7 @@ class AntMazeSCM(SCM):
         lambda_u = 0.5
         wind_penalty = lambda_u * u_norm * (1.0 + dist_norm)
 
-        return -1.0 - wind_penalty + success
+        return -1.0 - wind_penalty + float(self.compute_success())
 
     def step(self, action: Any, history: bool = False, show_reward: bool = True) -> Tuple[dict, float, bool, bool, dict]:
         # actions are float32, but observed actions need to be float64
@@ -281,7 +287,8 @@ class AntMazeSCM(SCM):
         data.xfrc_applied[torso_id] = total_force
 
         # step environment
-        env_obs, reward, terminated, truncated, env_info = self._env.step(action)
+        env_obs, reward, _, truncated, env_info = self._env.step(action)
+        terminated = self.compute_success()
 
         # update rest of SCM state
         self._t += 1

@@ -326,9 +326,8 @@ class AntMazeExpert:
         _, train, test = ogbench.make_env_and_datasets(env_id, max_episode_steps=num_steps, compact_dataset=True)
         self._expert_trajs = {k: np.concatenate([train[k], test[k]], axis=0) for k in train.keys()}
 
-        self.num_eps = len(self._expert_trajs['observations']) // 1000
-        self._ep = -1
-        self._t = 0
+        self.num_eps = len(self._expert_trajs['observations']) // 1000 - 1
+        self._t = -1 # reset brings it to 0
 
         self.success_radius = success_radius
         self._goal_xy = goal_xy
@@ -365,10 +364,9 @@ class AntMazeExpert:
         return obs
 
     def reset(self):
-        self._ep += 1
-        self._t = self._ep * self.num_steps
+        self._t += 1
         if self._t >= len(self._expert_trajs['observations']):
-            raise ValueError("No more expert trajectories available.")
+            raise ValueError('No more expert trajectories available.')
 
         self.P = []
         self.O = []

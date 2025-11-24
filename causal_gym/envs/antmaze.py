@@ -399,7 +399,7 @@ class AntMazeSCM(SCM):
 
         # intra-timestep edges for terminal state
         base_term = H * len(variables)
-        p, o, a, l, t, j = base_term, base_term + 1, base_term + 2, base_term + 3, base_term + 4, base_term + 5
+        p, o, a, l, t, j, f, w, x = base_term, base_term + 1, base_term + 2, base_term + 3, base_term + 4, base_term + 5, base_term + 6, base_term + 7, base_term + 8
 
         base_graph[j][a] = 1 # joint angular velocities affect joint angles
         base_graph[j][t] = 1 # joint angular velocities affect torso angular velocity
@@ -416,13 +416,21 @@ class AntMazeSCM(SCM):
 
         base_graph[p][y] = 1 # reward is based on position
 
+        # wind confounding for terminal state
+        base_graph[f][w] = 1
+        base_graph[f][l] = 1
+
+        conf_graph[w][y] = 1
+        conf_graph[l][y] = 1
+        conf_graph[w][l] = 1
+
         # inter-timstep edges
         for step in range(H):
             base = step * len(variables)
             base_next = (step + 1) * len(variables)
 
-            p, o, a, l, t, j, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6
-            p2, o2, a2, l2, t2, j2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6
+            p, o, a, l, t, j, f, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7, base + 8
+            p2, o2, a2, l2, t2, j2, f2, w2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7, base_next + 8
 
             base_graph[x][j2] = 1 # torque impacts joint angular velocity
 

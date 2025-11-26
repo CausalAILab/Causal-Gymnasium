@@ -106,19 +106,26 @@ class AntMazeSCM(SCM):
         return u
 
     def _F_val(self) -> NDArray[np.float64]:
-        p = 0.8
+        p = 0.9
         p_gust = 0.5
         min_strength = 0.3
         max_strength = 1.0
 
+        directions = np.array([
+            [1.0, 0.0], # +x
+            [-1.0, 0.0], # -x
+            [0.0, 1.0], # +y
+            [0.0, -1.0] # -y
+        ], dtype=np.float64)
+
         # start of episode, random gust or no gust
         if self._t == 0:
             if self.rng.random() < p_gust:
-                f = np.zeros(2, dtype=np.float64)
-            else:
+                dir = directions[self.rng.integers(0, len(directions))]
                 mag = self.rng.uniform(min_strength, max_strength)
-                angle = self.rng.uniform(0.0, 2.0 * np.pi)
-                f = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
+                f = mag * dir
+            else:
+                f = np.zeros(2, dtype=np.float64)
 
         # Markov chain
         else:
@@ -126,11 +133,11 @@ class AntMazeSCM(SCM):
                 f = self._F[-1]
             else:
                 if self.rng.random() < p_gust:
-                    f = np.zeros(2, dtype=np.float64)
-                else:
+                    dir = directions[self.rng.integers(0, len(directions))]
                     mag = self.rng.uniform(min_strength, max_strength)
-                    angle = self.rng.uniform(0.0, 2.0 * np.pi)
-                    f = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
+                    f = mag * dir
+                else:
+                    f = np.zeros(2, dtype=np.float64)
 
         return f
 
@@ -142,8 +149,8 @@ class AntMazeSCM(SCM):
         u_signal = u_norm
         f_signal = np.tanh(f_norm)
 
-        alpha_u = 2.0
-        alpha_f = 0.8
+        alpha_u = 0.8
+        alpha_f = 3.0
 
         base_noise = 0.05
         extra_noise = 0.25 * (f_norm / (f_norm + 1e-6))

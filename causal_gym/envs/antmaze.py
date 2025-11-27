@@ -33,7 +33,6 @@ class AntMazeSCM(SCM):
 
         # wind confounding
         self._U = [] # macro wind field (latent to all)
-        self._F = [] # targeted gust (latent to imitator)
         self.W = [] # noisy wind alarm
 
         self.action_space = self._env.action_space # Box(-1.0, 1.0, (8,), float32)
@@ -49,7 +48,6 @@ class AntMazeSCM(SCM):
             'L': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'T': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'J': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
-            'F': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
             'W': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64),
             'X': spaces.Box(low=act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
         }
@@ -105,59 +103,38 @@ class AntMazeSCM(SCM):
 
         return u
 
-    def _F_val(self) -> NDArray[np.float64]:
-        p = 0.9
-        p_gust = 0.5
-        min_strength = 0.3
-        max_strength = 1.0
-
-        directions = np.array([
-            [1.0, 0.0], # +x
-            [-1.0, 0.0], # -x
-            [0.0, 1.0], # +y
-            [0.0, -1.0] # -y
-        ], dtype=np.float64)
-
-        # start of episode, random gust or no gust
-        if self._t == 0:
-            if self.rng.random() < p_gust:
-                dir = directions[self.rng.integers(0, len(directions))]
-                mag = self.rng.uniform(min_strength, max_strength)
-                f = mag * dir
-            else:
-                f = np.zeros(2, dtype=np.float64)
-
-        # Markov chain
-        else:
-            if self.rng.random() < p:
-                f = self._F[-1]
-            else:
-                if self.rng.random() < p_gust:
-                    dir = directions[self.rng.integers(0, len(directions))]
-                    mag = self.rng.uniform(min_strength, max_strength)
-                    f = mag * dir
-                else:
-                    f = np.zeros(2, dtype=np.float64)
-
-        return f
-
     def _W(self) -> NDArray[np.float64]:
-        # favor U to increase bias
-        u_norm = float(np.linalg.norm(self._U[-1]))
-        f_norm = float(np.linalg.norm(self._F[-1]))
+        u = self._U[-1]
+        u_norm = float(np.linalg.norm(u))
+        if u_norm > 1e-6:
+            u_hat = u / u_norm
+        else:
+            u_hat = np.zeros_like(u)
 
-        u_signal = u_norm
-        f_signal = np.tanh(f_norm)
+        # orientation quaternion
+        qx, qy, qz, qw = self.O[-1]
 
-        alpha_u = 0.8
-        alpha_f = 3.0
+        # approximate yaw (heading) from quaternion
+        yaw = np.arctan2(
+            2.0 * (qw * qz + qx * qy),
+            1.0 - 2.0 * (qy * qy + qz * qz)
+        )
+        heading = np.array([np.cos(yaw), np.sin(yaw)], dtype=np.float64)
 
-        base_noise = 0.05
-        extra_noise = 0.25 * (f_norm / (f_norm + 1e-6))
-        noise_std = base_noise + extra_noise
-        noise = float(self.rng.normal(0.0, noise_std))
+        # alignment between wind and heading
+        if u_norm > 1e-6:
+            cos_align = float(np.clip(np.dot(heading, u_hat), -1.0, 1.0))
+        else:
+            cos_align = 0.0
 
-        w = np.tanh(alpha_u * u_signal + alpha_f * f_signal + noise)
+        alpha_u = 6.0
+        alpha_o = 3.0
+        base_noise = 0.01
+        noise = float(self.rng.normal(0.0, base_noise))
+
+        signal = alpha_u * u_norm + alpha_o * cos_align
+        w = np.tanh(signal + noise)
+
         return np.array([w], dtype=np.float64)
 
     def observation(self, history: bool = False) -> Dict[str, Any]:
@@ -176,8 +153,6 @@ class AntMazeSCM(SCM):
                 obs['T'] = self.T
             if 'J' not in self.hidden_dims:
                 obs['J'] = self.J
-            if 'F' not in self.hidden_dims:
-                obs['F'] = self._F
             if 'W' not in self.hidden_dims:
                 obs['W'] = self.W
             if 'X' not in self.hidden_dims:
@@ -195,8 +170,6 @@ class AntMazeSCM(SCM):
                 obs['T'] = self.T[-1]
             if 'J' not in self.hidden_dims:
                 obs['J'] = self.J[-1]
-            if 'F' not in self.hidden_dims:
-                obs['F'] = self._F[-1]
             if 'W' not in self.hidden_dims:
                 obs['W'] = self.W[-1]
             if 'X' not in self.hidden_dims:
@@ -216,7 +189,6 @@ class AntMazeSCM(SCM):
         self.T = [self._T()]
         self.J = [self._J()]
         self._U = [self._U_val()]
-        self._F = [self._F_val()]
         self.W = [self._W()]
         self.X = []
         self._Y = []
@@ -235,8 +207,6 @@ class AntMazeSCM(SCM):
             hiddens['T'] = self.T
         if 'J' in self.hidden_dims:
             hiddens['J'] = self.J
-        if 'F' in self.hidden_dims:
-            hiddens['F'] = self._F
         if 'W' in self.hidden_dims:
             hiddens['W'] = self.W
         if 'X' in self.hidden_dims:
@@ -245,7 +215,7 @@ class AntMazeSCM(SCM):
         info = {'Y': self._Y, 'U': self._U, 'env_obs': env_obs, 'env_info': env_info, 'hidden_obs': hiddens}
         return obs, info
 
-    def action(self, P: List[NDArray[np.float64]], O: List[NDArray[np.float64]], A: List[NDArray[np.float64]], L: List[NDArray[np.float64]], T: List[NDArray[np.float64]], J: List[NDArray[np.float64]], F: List[NDArray[np.float64]], W: List[NDArray[np.float64]]) -> ActType:
+    def action(self, P: List[NDArray[np.float64]], O: List[NDArray[np.float64]], A: List[NDArray[np.float64]], L: List[NDArray[np.float64]], T: List[NDArray[np.float64]], J: List[NDArray[np.float64]], W: List[NDArray[np.float64]]) -> ActType:
         # placeholder behavior policy
         return self.action_space.sample()
     
@@ -265,7 +235,7 @@ class AntMazeSCM(SCM):
         # wind penalty
         u_norm = float(np.linalg.norm(self._U[-1]))
         dist_norm = dist / 30.0 # approximate maze size
-        lambda_u = 0.5
+        lambda_u = 2.0
         wind_penalty = lambda_u * u_norm * (1.0 + dist_norm)
 
         return -1.0 - wind_penalty + float(self.compute_success())
@@ -276,9 +246,7 @@ class AntMazeSCM(SCM):
 
         # apply wind and gust
         u = self._U_val()
-        f = self._F_val()
         self._U.append(u)
-        self._F.append(f)
 
         model = self._env.env.env.env.model
         data = self._env.env.env.env.data
@@ -286,8 +254,8 @@ class AntMazeSCM(SCM):
         data.xfrc_applied[:] = 0.0 # reset last step's forces
         torso_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'torso')
         total_force = np.array([
-            u[0] + f[0],
-            u[1] + f[1],
+            u[0],
+            u[1],
             0.0, # no z
             0.0, 0.0, 0.0 # no torque
         ], dtype=np.float64)
@@ -325,8 +293,6 @@ class AntMazeSCM(SCM):
             hiddens['T'] = self.T
         if 'J' in self.hidden_dims:
             hiddens['J'] = self.J
-        if 'F' in self.hidden_dims:
-            hiddens['F'] = self._F
         if 'W' in self.hidden_dims:
             hiddens['W'] = self.W
         if 'X' in self.hidden_dims:
@@ -343,7 +309,7 @@ class AntMazeSCM(SCM):
 
     @property
     def get_graph(self) -> Graph:
-        state_vars = ['P', 'O', 'A', 'L', 'T', 'J', 'F', 'W']
+        state_vars = ['P', 'O', 'A', 'L', 'T', 'J', 'W']
         variables = state_vars + ['X']
         H = self.num_steps
         n = H * len(variables) + len(state_vars) + 1
@@ -370,7 +336,7 @@ class AntMazeSCM(SCM):
         # intra-timestep edges
         for step in range(H):
             base = step * len(variables)
-            p, o, a, l, t, j, f, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7, base + 8
+            p, o, a, l, t, j, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
 
             base_graph[j][a] = 1 # joint angular velocities affect joint angles
             base_graph[j][t] = 1 # joint angular velocities affect torso angular velocity
@@ -396,9 +362,7 @@ class AntMazeSCM(SCM):
             base_graph[p][y] = 1 # reward is based on position
 
             # wind confounding
-            base_graph[f][w] = 1
-            base_graph[f][l] = 1
-            base_graph[f][x] = 1
+            base_graph[o][w] = 1
 
             conf_graph[w][y] = 1
             conf_graph[l][y] = 1
@@ -406,7 +370,7 @@ class AntMazeSCM(SCM):
 
         # intra-timestep edges for terminal state
         base_term = H * len(variables)
-        p, o, a, l, t, j, f, w, x = base_term, base_term + 1, base_term + 2, base_term + 3, base_term + 4, base_term + 5, base_term + 6, base_term + 7, base_term + 8
+        p, o, a, l, t, j, w, x = base_term, base_term + 1, base_term + 2, base_term + 3, base_term + 4, base_term + 5, base_term + 6, base_term + 7
 
         base_graph[j][a] = 1 # joint angular velocities affect joint angles
         base_graph[j][t] = 1 # joint angular velocities affect torso angular velocity
@@ -424,8 +388,7 @@ class AntMazeSCM(SCM):
         base_graph[p][y] = 1 # reward is based on position
 
         # wind confounding for terminal state
-        base_graph[f][w] = 1
-        base_graph[f][l] = 1
+        base_graph[o][w] = 1
 
         conf_graph[w][y] = 1
         conf_graph[l][y] = 1
@@ -436,8 +399,8 @@ class AntMazeSCM(SCM):
             base = step * len(variables)
             base_next = (step + 1) * len(variables)
 
-            p, o, a, l, t, j, f, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7, base + 8
-            p2, o2, a2, l2, t2, j2, f2, w2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7, base_next + 8
+            p, o, a, l, t, j, w, x = base, base + 1, base + 2, base + 3, base + 4, base + 5, base + 6, base + 7
+            p2, o2, a2, l2, t2, j2, w2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3, base_next + 4, base_next + 5, base_next + 6, base_next + 7
 
             base_graph[x][j2] = 1 # torque impacts joint angular velocity
 
@@ -462,9 +425,9 @@ class AntMazeSCM(SCM):
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
-        all_vars = ['P', 'O', 'A', 'L', 'T', 'J', 'F', 'W', 'X']
+        all_vars = ['P', 'O', 'A', 'L', 'T', 'J', 'W', 'X']
         observed = [v for v in all_vars if v not in self.hidden_dims]
-        unobserved = list(self.hidden_dims) + ['Y', 'U']
+        unobserved = list(self.hidden_dims) + ['U', 'Y']
         return observed, unobserved
 
 class AntMazeExpert:
@@ -592,11 +555,10 @@ class AntMazePCH(PCH):
         L = self.env.L
         T = self.env.T
         J = self.env.J
-        _F = self.env._F
         W = self.env.W
 
         if behavioral_policy is not None:
-            action = behavioral_policy(P, O, A, L, T, J, _F, W)
+            action = behavioral_policy(P, O, A, L, T, J, W)
         else:
             return self.expert.step()
 
@@ -623,10 +585,9 @@ class AntMazePCH(PCH):
         L = self.env.L
         T = self.env.T
         J = self.env.J
-        _F = self.env._F
         W = self.env.W
 
-        intuition = self.env.action(P, O, A, L, T, J, _F, W)
+        intuition = self.env.action(P, O, A, L, T, J, W)
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition

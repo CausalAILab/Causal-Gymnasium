@@ -48,7 +48,7 @@ class AntMazeSCM(SCM):
             'L': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'T': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'J': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
-            'W': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64),
+            'W': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
             'X': spaces.Box(low=act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
         }
 
@@ -83,59 +83,75 @@ class AntMazeSCM(SCM):
         return self._env.env.env.env.get_ob()[21:29]
 
     def _U_val(self) -> NDArray[np.float64]:
-        p = 0.8
-        max_strength = 0.5
+        p_gust = 0.1
+        min_strength = 5.0
+        max_strength = 10.0
 
-        # start of episode, random wind
+        # start of episode, random gust or no gust
         if self._t == 0:
-            mag = self.rng.uniform(0.0, max_strength)
-            angle = self.rng.uniform(0.0, 2.0 * np.pi)
-            u = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
-
-        # Markov chain
-        else:
-            if self.rng.random() < p:
-                u = self._U[-1]
-            else:
-                mag = self.rng.uniform(0.0, max_strength)
+            if self.rng.random() < p_gust:
                 angle = self.rng.uniform(0.0, 2.0 * np.pi)
+                mag = self.rng.uniform(min_strength, max_strength)
                 u = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
+            else:
+                u = np.zeros(2, dtype=np.float64)
+
+        else:
+            if self._t % 5 != 0:
+                return self._U[-1]
+            if self.rng.random() < p_gust:
+                angle = self.rng.uniform(0.0, 2.0 * np.pi)
+                mag = self.rng.uniform(min_strength, max_strength)
+                u = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
+            else:
+                u = np.zeros(2, dtype=np.float64)
 
         return u
 
     def _W(self) -> NDArray[np.float64]:
+        # latest latent wind
         u = self._U[-1]
         u_norm = float(np.linalg.norm(u))
-        if u_norm > 1e-6:
+        if u_norm > 1e-8:
             u_hat = u / u_norm
+            phi_u = float(np.arctan2(u_hat[1], u_hat[0]))  # wind direction
         else:
             u_hat = np.zeros_like(u)
+            phi_u = 0.0
 
-        # orientation quaternion
+        # orientation quaternion -> yaw (heading angle)
         qx, qy, qz, qw = self.O[-1]
-
-        # approximate yaw (heading) from quaternion
-        yaw = np.arctan2(
+        yaw = float(np.arctan2(
             2.0 * (qw * qz + qx * qy),
             1.0 - 2.0 * (qy * qy + qz * qz)
-        )
+        ))
         heading = np.array([np.cos(yaw), np.sin(yaw)], dtype=np.float64)
 
-        # alignment between wind and heading
-        if u_norm > 1e-6:
+        # alignment between heading and wind
+        if u_norm > 1e-8:
             cos_align = float(np.clip(np.dot(heading, u_hat), -1.0, 1.0))
         else:
             cos_align = 0.0
 
-        alpha_u = 6.0
-        alpha_o = 3.0
-        base_noise = 0.01
-        noise = float(self.rng.normal(0.0, base_noise))
+        # relative angle between heading and wind
+        rel_angle = float(np.arctan2(np.sin(yaw - phi_u), np.cos(yaw - phi_u)))
 
-        signal = alpha_u * u_norm + alpha_o * cos_align
-        w = np.tanh(signal + noise)
+        # mix O and U in a non-invertible way
+        alpha_u = 1.5
+        alpha_o = 0.7
+        alpha_mix = 1.0
 
-        return np.array([w], dtype=np.float64)
+        base1 = alpha_u * u_norm + alpha_mix * cos_align + alpha_o * np.cos(yaw)
+        base2 = alpha_u * u_norm * cos_align + alpha_o * np.sin(rel_angle)
+
+        # small observational noise so W is not deterministic
+        noise_std = 0.15
+        noise = self.rng.normal(0.0, noise_std, size=2)
+
+        w_raw = np.array([base1, base2], dtype=np.float64) + noise
+        w = np.tanh(w_raw)   # keep in [-1, 1]
+
+        return w
 
     def observation(self, history: bool = False) -> Dict[str, Any]:
         obs = {}
@@ -234,11 +250,11 @@ class AntMazeSCM(SCM):
 
         # wind penalty
         u_norm = float(np.linalg.norm(self._U[-1]))
-        dist_norm = dist / 30.0 # approximate maze size
-        lambda_u = 2.0
+        dist_norm = dist / 25.0 # approximate maze size
+        lambda_u = 1.0
         wind_penalty = lambda_u * u_norm * (1.0 + dist_norm)
 
-        return -1.0 - wind_penalty + float(self.compute_success())
+        return float(self.compute_success()) - wind_penalty
 
     def step(self, action: Any, history: bool = False, show_reward: bool = True) -> Tuple[dict, float, bool, bool, dict]:
         # actions are float32, but observed actions need to be float64

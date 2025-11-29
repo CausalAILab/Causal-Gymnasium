@@ -425,6 +425,7 @@ class AntMazeSCM(SCM):
             base_graph[l][l2] = 1
             base_graph[t][t2] = 1
             base_graph[j][j2] = 1
+            base_graph[x][x2] = 1
 
         nodes = [{'name': n} for n in nodes.values()]
         edges = []

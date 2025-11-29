@@ -9,12 +9,13 @@ from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 class AntMazeSCM(SCM):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, success_radius: float = 5.0, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
-        self.hidden_dims = hidden_dims if hidden_dims is not None else set()
+        self.expert_mode = expert_mode
+        self.hidden_dims = set() if expert_mode else {'O'}
         self._t = 0
 
         self._env = ogbench.make_env_and_datasets(env_id, env_only=True, max_episode_steps=num_steps)
@@ -32,8 +33,8 @@ class AntMazeSCM(SCM):
         self._Y = [] # sparse reward
 
         # wind confounding
-        self._U = [] # macro wind field (latent to all)
-        self.W = [] # noisy wind alarm
+        self._U = [] # wind field (latent to all)
+        self.W = [] # noisy heading
 
         self.action_space = self._env.action_space # Box(-1.0, 1.0, (8,), float32)
 
@@ -83,9 +84,9 @@ class AntMazeSCM(SCM):
         return self._env.env.env.env.get_ob()[21:29]
 
     def _U_val(self) -> NDArray[np.float64]:
-        p_gust = 0.1
-        min_strength = 5.0
-        max_strength = 10.0
+        p_gust = 0.05
+        min_strength = 2.0
+        max_strength = 5.0
 
         # start of episode, random gust or no gust
         if self._t == 0:
@@ -109,49 +110,43 @@ class AntMazeSCM(SCM):
         return u
 
     def _W(self) -> NDArray[np.float64]:
-        # latest latent wind
         u = self._U[-1]
         u_norm = float(np.linalg.norm(u))
         if u_norm > 1e-8:
             u_hat = u / u_norm
-            phi_u = float(np.arctan2(u_hat[1], u_hat[0]))  # wind direction
         else:
             u_hat = np.zeros_like(u)
-            phi_u = 0.0
 
-        # orientation quaternion -> yaw (heading angle)
+        # yaw/heading
         qx, qy, qz, qw = self.O[-1]
         yaw = float(np.arctan2(
             2.0 * (qw * qz + qx * qy),
             1.0 - 2.0 * (qy * qy + qz * qz)
         ))
-        heading = np.array([np.cos(yaw), np.sin(yaw)], dtype=np.float64)
+        heading = np.array(
+            [np.cos(yaw), np.sin(yaw)],
+            dtype=np.float64
+        )
 
-        # alignment between heading and wind
-        if u_norm > 1e-8:
-            cos_align = float(np.clip(np.dot(heading, u_hat), -1.0, 1.0))
-        else:
-            cos_align = 0.0
+        alpha_o = 0.9 # dominant
+        alpha_u = 0.1 # small U contamination
+        noise_std = 0.05
 
-        # relative angle between heading and wind
-        rel_angle = float(np.arctan2(np.sin(yaw - phi_u), np.cos(yaw - phi_u)))
+        if not self.expert_mode:
+            # rely on wind first and yaw second now
+            alpha_o = 0.1
+            alpha_u = 0.9
+            noise_std = 0.5
 
-        # mix O and U in a non-invertible way
-        alpha_u = 1.5
-        alpha_o = 0.7
-        alpha_mix = 1.0
+        base = alpha_o * heading + alpha_u * u_hat
 
-        base1 = alpha_u * u_norm + alpha_mix * cos_align + alpha_o * np.cos(yaw)
-        base2 = alpha_u * u_norm * cos_align + alpha_o * np.sin(rel_angle)
-
-        # small observational noise so W is not deterministic
-        noise_std = 0.15
         noise = self.rng.normal(0.0, noise_std, size=2)
 
-        w_raw = np.array([base1, base2], dtype=np.float64) + noise
-        w = np.tanh(w_raw)   # keep in [-1, 1]
+        w_raw = base + noise
 
-        return w
+        # bound
+        w = np.tanh(w_raw)
+        return w.astype(np.float64)
 
     def observation(self, history: bool = False) -> Dict[str, Any]:
         obs = {}
@@ -447,7 +442,7 @@ class AntMazeSCM(SCM):
         return observed, unobserved
 
 class AntMazeExpert:
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, goal_xy: np.ndarray = np.array([20.0, 20.0]), seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, success_radius: float = 5.0, goal_xy: np.ndarray = np.array([20.0, 20.0]), seed: Optional[int] = None):
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
 
@@ -460,7 +455,7 @@ class AntMazeExpert:
         self.success_radius = success_radius
         self._goal_xy = goal_xy
 
-        self.hidden_dims = hidden_dims if hidden_dims is not None else set()
+        self.hidden_dims = set() if expert_mode else {'O'}
 
         self.P = []
         self.O = []
@@ -556,10 +551,10 @@ class AntMazeExpert:
         return self.observation(), reward, terminated, truncated, info
 
 class AntMazePCH(PCH):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, hidden_dims: Optional[Set[str]] = None, success_radius: float = 5.0, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, success_radius: float = 5.0, seed: Optional[int] = None):
         # initialize underlying SCM
-        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, success_radius=success_radius, seed=seed)
-        self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, hidden_dims=hidden_dims, success_radius=success_radius, goal_xy=self.env._goal_xy, seed=seed)
+        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, expert_mode=expert_mode, success_radius=success_radius, seed=seed)
+        self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, expert_mode=True, success_radius=success_radius, goal_xy=self.env._goal_xy, seed=seed)
         super().__init__()
 
         self.last_actor_is_expert = True

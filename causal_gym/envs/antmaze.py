@@ -132,17 +132,20 @@ class AntMazeSCM(SCM):
         alpha_u = 0.1 # small U contamination
         noise_std = 0.05
 
-        if not self.expert_mode:
-            # rely on wind first and yaw second now
-            alpha_o = 0.1
-            alpha_u = 0.9
-            noise_std = 0.5
+        # if not self.expert_mode:
+        #     # rely on wind first and yaw second now
+        #     alpha_o = 0.1
+        #     alpha_u = 0.9
+        #     noise_std = 0.5
 
         base = alpha_o * heading + alpha_u * u_hat
 
         noise = self.rng.normal(0.0, noise_std, size=2)
 
         w_raw = base + noise
+
+        if not self.expert_mode:
+            w_raw = -w_raw # "backward sensor"
 
         # bound
         w = np.tanh(w_raw)

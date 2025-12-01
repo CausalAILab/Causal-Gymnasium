@@ -9,13 +9,15 @@ from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 class AntMazeSCM(SCM):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, success_radius: float = 5.0, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, custom_hidden=None, success_radius: float = 5.0, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
         self.expert_mode = expert_mode
         self.hidden_dims = set() if expert_mode else {'O'}
+        if custom_hidden is not None:
+            self.hidden_dims = custom_hidden
         self._t = 0
 
         self._env = ogbench.make_env_and_datasets(env_id, env_only=True, max_episode_steps=num_steps)
@@ -555,9 +557,9 @@ class AntMazeExpert:
         return self.observation(), reward, terminated, truncated, info
 
 class AntMazePCH(PCH):
-    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, success_radius: float = 5.0, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'antmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, custom_hidden=None, success_radius: float = 5.0, seed: Optional[int] = None):
         # initialize underlying SCM
-        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, expert_mode=expert_mode, success_radius=success_radius, seed=seed)
+        self.env = AntMazeSCM(env_id=env_id, num_steps=num_steps, expert_mode=expert_mode, custom_hidden=custom_hidden, success_radius=success_radius, seed=seed)
         self.expert = AntMazeExpert(env_id=env_id, num_steps=num_steps, expert_mode=True, success_radius=success_radius, goal_xy=self.env._goal_xy, seed=seed)
         super().__init__()
 

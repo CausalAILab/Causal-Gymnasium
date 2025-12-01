@@ -95,7 +95,7 @@ The `examples/` directory contains interactive notebooks (`test_cartpole.ipynb`,
 - *Exogenous variables* sampled through `sample_u()`. These latents inject stochasticity into the system (wind gusts, random friction, etc.) and are the levers behind counterfactual reasoning.
 - *Graph structure* returned by `get_graph`, capturing how the variables causally influence one another. The graph is more than documentation. It grounds the rules that make interventions and counterfactuals well-defined.
 
-From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition `p(s', r | s, a)` in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By utlizing the SCM-PCH construction, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
+From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition $p(s', r | s, a)$ in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By utlizing the SCM-PCH construction, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
 
 **Interface - Pearl’s Causal Hierarchy (PCH)** – The companion `PCH` wrapper is the control panel for navigating the three interaction modalities with an SCM:
 - *Level 1 – Observing (`see`)*: The environment evolves under its built-in behaviour policy. Calling `see()` corresponds to passively logging trajectories; the info dict records the “natural action” that was taken.
@@ -133,10 +133,10 @@ Rows `1–3` correspond to standard RL & causal learning settings (off-policy ev
 **Reward**
 Defines how cumulative returns are calculated.
 
-**Bridge to Potential Outcomes (PO)** – If you are used to notation such as \(Y_x\) or \(Y_{x'} - Y_x\):
-- `see()` produces observational data \( (U, X, Y) \) with the action determined by the behaviour policy. Such data is collected passively and is close to concepts like standard logged bandit feedback in the literature.
-- `do(policy)` realises \(Y_{x}\) by forcing `X` to whatever the policy outputs. Different calls with different forced actions mimic Randomized Controlled Trials (RCT).
-- `ctf_do` retrieves a single-world intervention graph (SWIG) view: the natural action gives you the “factual” world, and the counterfactual policy lets you evaluate contrasts such as \(Y_{x'} - Y_x\) conditioned on the realised latents. Because the SCM keeps track of the sampled `U`, two consecutive calls within the same episode remain coupled in the potential-outcome sense.
+**Bridge to Potential Outcomes (PO)** – If you are used to notation such as $Y_x$ or $Y_{x'} - Y_x$:
+- `see()` produces observational data $P(X, Y)$ with the action determined by the behaviour policy. Such data is collected passively and is close to concepts like standard logged bandit feedback in the literature.
+- `do(policy)` realises $Y_{x}$ by forcing $X$ to whatever the policy outputs. Different calls with different forced actions mimic Randomized Controlled Trials (RCT).
+- `ctf_do` retrieves a single-world intervention graph (SWIG) view: the natural action gives you the “factual” world, and the counterfactual policy lets you evaluate contrasts such as $Y_{x'} - Y_x$ conditioned on the realised latents. Because the SCM keeps track of the sampled $U$, two consecutive calls within the same episode remain coupled in the potential-outcome sense.
 
 <!-- **Tasks and permissions** – The `Task` object configures which levels you are allowed to access (`LearningRegime.see`, `do`, `ctf_do`, or mixtures like `see_do`). This gives you a precise way to state assumptions: for example, an off-policy evaluation project can restrict itself to `see`, whereas algorithmic recourse or counterfactual policy evaluation requires `ctf_do`. -->
 

@@ -16,5 +16,6 @@ setup(
         "pydot>=1.4.2",
         "toposort",
         "pydash",
+        "box2d-py"
     ],
 )

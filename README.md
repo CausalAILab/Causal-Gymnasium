@@ -94,6 +94,7 @@ The `examples/` directory contains interactive notebooks (`test_cartpole.ipynb`,
 - *Endogenous variables* (state, action, reward, next state, perception, etc.) updated step-by-step via deterministic functions.
 - *Exogenous variables* sampled through `sample_u()`. These latents inject stochasticity into the system (wind gusts, random friction, etc.) and are the levers behind counterfactual reasoning.
 - *Graph structure* returned by `get_graph`, capturing how the variables causally influence one another. The graph is more than documentation. It grounds the rules that make interventions and counterfactuals well-defined.
+- *Variable ordering* via `get_variable_ordering()`, ensuring variables are sampled/computed in topological order respecting their causal dependencies. See [docs/VARIABLE_ORDERING.md](docs/VARIABLE_ORDERING.md) for details.
 
 From an RL researcher’s perspective, an SCM decomposes the usual Markovian transition $p(s', r | s, a)$ in an MDP into a set of assignments that reveal which randomness is policy-dependent and which comes from the environment (Note that we also support general decision making problems that are NOT MDPs!). By utlizing the SCM-PCH construction, CausalGym expands RL learning modalities to all three levels of PCH: collecting purely observational data, actively perturbing the system, and querying counterfactuals.
 

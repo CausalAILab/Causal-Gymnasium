@@ -27,10 +27,27 @@ class SCM(
     - :meth:`observation` = Return the rendered environment observations at the current stage (potentially using render() APIs).
     - :meth:`action` - Sample an action from the behavior policy given the current state of the environment.
     - :meth:`get_graph` - Generate the causal diagram of the underlying environment.
+    - :meth:`get_variable_ordering` - Get the topological ordering of variables for sampling/computing.
 
     Environments have additional attributes for users to understand the implementation
 
     - :attr:`policy` - The behavior policy already deployed in the environment.
+
+    **Important Note on Variable Ordering:**
+    
+    When implementing `reset()` and `step()` methods, variables must be sampled/computed in an order
+    that respects their causal dependencies. If variable W depends on variables U and D (i.e., U and D 
+    are parents of W in the causal graph), then U and D must be sampled/computed before W.
+    
+    Use :meth:`get_variable_ordering` to obtain the correct topological order for your variables.
+    
+    Example:
+        If the causal graph has edges U -> W and D -> W, then the correct order is:
+        1. Sample U
+        2. Sample D  
+        3. Compute W (which depends on U and D)
+        
+    Failure to respect this ordering will result in errors or incorrect behavior.
 
     """
     # Set this in SOME subclasses
@@ -136,6 +153,66 @@ class SCM(
                 G[i, j] = 1 i<->j
         """
         raise NotImplementedError
+    
+    def get_variable_ordering(self, variables=None):
+        """Compute the topological ordering of variables based on the causal graph.
+        
+        This method ensures that when sampling or computing variables, they are processed
+        in an order that respects their causal dependencies. A variable can only be computed
+        after all its parent variables have been computed.
+        
+        Args:
+            variables: Optional list of variable names to order. If None, orders all variables
+                      in the graph. Variable names should match node names in the causal graph.
+        
+        Returns:
+            list: Variable names in topological order (parents before children).
+        
+        Example:
+            >>> # If causal graph has: U -> W, D -> W
+            >>> env.get_variable_ordering(['U', 'D', 'W'])
+            ['U', 'D', 'W']  # or ['D', 'U', 'W'] - both valid
+            
+        Note:
+            - For variables with no dependencies between them (e.g., U and D above),
+              the relative order is arbitrary but deterministic.
+            - This method requires that get_graph is implemented and returns a valid Graph object.
+            - If the causal graph contains cycles among the specified variables, this method
+              will raise an error.
+        """
+        from .graph_utils import GraphUtils as gu
+        
+        try:
+            graph = self.get_graph
+        except NotImplementedError:
+            raise NotImplementedError(
+                "get_variable_ordering requires get_graph to be implemented. "
+                "Please implement get_graph in your SCM subclass."
+            )
+        
+        # Get topologically sorted nodes from the graph
+        sorted_nodes = gu.topoSort(graph, sort_=True)
+        
+        # Extract node names in order
+        ordered_vars = [node['name'] for node in sorted_nodes]
+        
+        # If specific variables are requested, filter and maintain order
+        if variables is not None:
+            # Create a set for fast lookup
+            var_set = set(variables)
+            # Filter to only requested variables, maintaining topological order
+            ordered_vars = [v for v in ordered_vars if v in var_set]
+            
+            # Check if all requested variables were found
+            found_vars = set(ordered_vars)
+            missing_vars = var_set - found_vars
+            if missing_vars:
+                raise ValueError(
+                    f"Variables {missing_vars} not found in the causal graph. "
+                    f"Available variables: {[n['name'] for n in graph.nodes]}"
+                )
+        
+        return ordered_vars
     
     @property
     def unwrapped(self,) -> Union[Env[ObsType, ActType], Generic[PolicyType, ObsType, ActType]]:

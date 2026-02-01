@@ -15,8 +15,6 @@ setup(
         "networkx>=2.6.3",
         "toposort>=1.7",
         "pydot>=1.4.2",
-        "toposort",
-        "pydash",
         "box2d-py",
         "torchvision==0.25.0",
         "ogbench==1.2.1",

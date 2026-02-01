@@ -121,14 +121,17 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
 
         self.sample_u()
 
-    def _normalize_probs(self, probs: tuple[float]) -> np.ndarray[float]:
+    def _normalize_probs(self, probs: tuple[float], tol=1e-6) -> np.ndarray[float]:
         """Mitigates small floating point errors in probability sums."""
         prob_array = np.array(probs, dtype=float)
-        if not np.isclose(prob_array.sum(), 1.0, atol=1e-6):
+        prob_sum = prob_array.sum()
+        if prob_sum == 1.0:
+            return prob_array
+        elif np.isclose(prob_sum, 1.0, atol=tol): # tolerate small floating point errors
             prob_array /= prob_array.sum()
+            return prob_array
         else:
             raise ValueError("Provided probabilities do not sum to 1.")
-        return prob_array
 
     def _to_rc(self, s_idx: int) -> tuple[int, int]:
         """Converts a 1D state index to 2D row, col coordinates."""

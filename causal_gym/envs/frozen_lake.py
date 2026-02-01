@@ -1,5 +1,4 @@
 ### frozenlake.py
-from re import I
 import gymnasium as gym
 import numpy as np
 import pygame

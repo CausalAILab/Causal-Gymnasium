@@ -17,7 +17,9 @@ setup(
         "pydot>=1.4.2",
         "toposort",
         "pydash",
-        "box2d-py"
+        "box2d-py",
+        "torchvision==0.25.0",
+        "ogbench==1.2.1",
     ],
     include_package_data=True,
 )

@@ -1,4 +1,5 @@
 ### frozenlake.py
+from re import I
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -41,7 +42,9 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         super().__init__()
         self.map_name = map_name
         self.is_slippery = is_slippery
+        wind_probabilities = self._normalize_probs(wind_probabilities)
         self.wind_probabilities = wind_probabilities
+
         assert sum(wind_probabilities) == 1.0, "Wind probabilities must sum to 1."
         assert len(wind_probabilities) == 5, "Wind probabilities must have 5 elements."
 
@@ -117,6 +120,15 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
             raise ValueError("Goal 'G' not found in map description.")
 
         self.sample_u()
+
+    def _normalize_probs(self, probs: tuple[float]) -> np.ndarray[float]:
+        """Mitigates small floating point errors in probability sums."""
+        prob_array = np.array(probs, dtype=float)
+        if not np.isclose(prob_array.sum(), 1.0, atol=1e-6):
+            prob_array /= prob_array.sum()
+        else:
+            raise ValueError("Provided probabilities do not sum to 1.")
+        return prob_array
 
     def _to_rc(self, s_idx: int) -> tuple[int, int]:
         """Converts a 1D state index to 2D row, col coordinates."""

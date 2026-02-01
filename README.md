@@ -16,6 +16,11 @@ pip install -e .
 ```
 The editable install pulls in Gymnasium, highway-env, pygame, networkx and other dependencies defined in `setup.py`. Some environments download additional assets on first use (e.g. `MNISTSCM` fetches the MNIST dataset via `torchvision` and the Atari wrapper requires ALE ROMs).
 
+Alternatively, the package can be installed directly from GitHub: 
+```bash
+pip install git+https://github.com/CausalAILab/Causal-Gymnasium.git
+```
+
 ## Repository Layout
 ```text
 causalgym/

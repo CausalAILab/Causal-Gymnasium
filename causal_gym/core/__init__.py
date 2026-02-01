@@ -13,7 +13,8 @@ from .policy_scope import (
     PolicyScope
 )
 from .task import (
-    Task
+    Task,
+    Assumptions
 )
 from .types import (
     ObsType,

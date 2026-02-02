@@ -13,6 +13,7 @@ from .mnist import MNISTSCM, MNISTPCH
 from .highway_single_step import HighwaySingleStepSCM, HighwaySingleStepPCH
 from .highway import HighwaySCM, HighwayPCH
 from .antmaze import AntMazeSCM, AntMazePCH
+from .humanoidmaze import HumanoidMazeSCM, HumanoidMazePCH
 from .race import RaceSCM, RacePCH
 from .masked_atari import MaskedAtariSCM, MaskedAtariPCH
 from .random_friction_ant import RandomFrictionAntMujocoSCM, RandomFrictionAntMujocoPCH

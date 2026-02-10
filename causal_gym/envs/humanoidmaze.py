@@ -375,6 +375,8 @@ class HumanoidMazeSCM(SCM):
             base_graph[a][h] = 1  # Joint angles affect head height
             base_graph[c][p] = 1  # COM velocity affects position
             base_graph[v][c] = 1  # Torso vertical affects COM velocity
+            base_graph[h][p] = 1  # TODO verify consistency
+            base_graph[e][p] = 1  # TODO verify consistency
 
             # State influences decision-making
             base_graph[p][x] = 1

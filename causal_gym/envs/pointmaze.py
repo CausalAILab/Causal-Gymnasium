@@ -9,13 +9,13 @@ from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 class PointMazeSCM(SCM):
-    def __init__(self, env_id: str = 'pointmaze-medium-navigate-singletask-task1-v0', num_steps: int = 1000, expert_mode: bool = False, custom_hidden=None, success_radius: float = 5.0, seed: Optional[int] = None):
+    def __init__(self, env_id: str = 'pointmaze-medium-navigate-singletask-task4-v0', num_steps: int = 1000, expert_mode: bool = False, custom_hidden=None, success_radius: float = 2.0, seed: Optional[int] = None):
         super().__init__()
 
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
         self.expert_mode = expert_mode
-        self.hidden_dims = set() if expert_mode else {'L'}
+        self.hidden_dims = set() if expert_mode else {'H'}
         if custom_hidden is not None:
             self.hidden_dims = custom_hidden
         self._t = 0
@@ -25,14 +25,13 @@ class PointMazeSCM(SCM):
         self._goal_xy = info['goal'][:2]
         self.success_radius = success_radius
 
-        self.P = [] # position, 2-dimensional vector of x,y
-        self.L = [] # ball linear velocity, 2-dimensional vector of x,y
-        self.X = [] # action, 2-dimensional vector of linear force x,y
+        self.H = []  # horizontal position (x)
+        self.V = []  # vertical position (y)
+        self.X = []  # action, 2-dimensional vector of linear force x,y
         self._Y = [] # sparse reward
 
-        # wind confounding
-        self._U = [] # wind field
-        self.W = [] # noisy velocity sensor
+        self._U = [] # fog intensity (unobserved confounder)
+        self.D = []  # H surrogate, noisy
 
         self.action_space = self._env.action_space # Box(-1.0, 1.0, (2,), float32)
 
@@ -41,85 +40,63 @@ class PointMazeSCM(SCM):
         act_high = np.asarray(self.action_space.high, dtype=self.action_space.dtype)
 
         full_obs = {
-            'P': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
-            'L': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
-            'W': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
+            'H': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64),
+            'V': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64),
+            'D': spaces.Box(low=-np.inf, high=np.inf, shape=(1,), dtype=np.float64),
             'X': spaces.Box(low=act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
         }
 
         self.observation_space = spaces.Dict({k: v for k, v in full_obs.items() if k not in self.hidden_dims})
-        '''
-        Observation space details:
-        Box(-inf, inf, (4,), float64)
-        0-1 = position x,y
-        2-3 = ball linear velocity x, y (borrowed from qvel)
-        '''
 
-    def _P(self) -> NDArray[np.float64]:
-        return self._env.env.env.env.get_ob()
+    def _H_val(self) -> NDArray[np.float64]:
+        return np.array([self._env.unwrapped.data.qpos[0]], dtype=np.float64)
 
-    def _L(self) -> NDArray[np.float64]:
-        return self._env.unwrapped.data.qvel
+    def _V_val(self) -> NDArray[np.float64]:
+        return np.array([self._env.unwrapped.data.qpos[1]], dtype=np.float64)
 
-    def _U_val(self) -> NDArray[np.float64]:
-        p_gust = 0.05
-        min_strength = 0.05
-        max_strength = 0.15
+    def _position(self) -> NDArray[np.float64]:
+        return np.array([self.H[-1][0], self.V[-1][0]], dtype=np.float64)
 
-        # start of episode, random gust or no gust
-        if self._t == 0:
-            if self.rng.random() < p_gust:
-                angle = self.rng.uniform(0.0, 2.0 * np.pi)
-                mag = self.rng.uniform(min_strength, max_strength)
-                u = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
-            else:
-                u = np.zeros(2, dtype=np.float64)
+    def _U_val(self) -> np.float64:
+        """Fog intensity: 0 = clear, (0, 0.5] = foggy."""
+        if self.rng.random() < 0.3:
+            return np.float64(self.rng.uniform(0.1, 0.5))
+        return np.float64(0.0)
 
-        else:
-            if self._t % 5 != 0:
-                return self._U[-1]
-            if self.rng.random() < p_gust:
-                angle = self.rng.uniform(0.0, 2.0 * np.pi)
-                mag = self.rng.uniform(min_strength, max_strength)
-                u = np.array([mag * np.cos(angle), mag * np.sin(angle)], dtype=np.float64)
-            else:
-                u = np.zeros(2, dtype=np.float64)
-
-        return u
-
-    def _W(self) -> NDArray[np.float64]:
-        u = self._U[-1]
-        l = self.L[-1]
+    def _D_val(self) -> NDArray[np.float64]:
+        h_val = float(self.H[-1])
+        u = float(self._U[-1])
 
         if self.expert_mode:
-            w_l, w_u = 0.9, 0.1
-            noise_std = 0.01
+            noise_std = 0.1 + u  # fog increases sensor noise
+            noise = self.rng.normal(0.0, noise_std)
+            return np.array([h_val + noise], dtype=np.float64)
         else:
-            w_l, w_u = 0.3, 0.7
-            noise_std = 0.1
-
-        noise = self.rng.normal(0.0, noise_std, size=2)
-        return (w_l * l + w_u * u + noise).astype(np.float64)
+            # Only reveal direction sign of H
+            if h_val < 0.0:
+                return np.array([1.0], dtype=np.float64)
+            else:
+                return np.array([-1.0], dtype=np.float64)
 
     def observation(self, history: bool = False) -> Dict[str, Any]:
         obs = {}
 
         if history:
-            if 'P' not in self.hidden_dims:
-                obs['P'] = self.P
-            if 'L' not in self.hidden_dims:
-                obs['L'] = self.L
-            if 'W' not in self.hidden_dims:
-                obs['W'] = self.W
+            if 'H' not in self.hidden_dims:
+                obs['H'] = self.H
+            if 'V' not in self.hidden_dims:
+                obs['V'] = self.V
+            if 'D' not in self.hidden_dims:
+                obs['D'] = self.D
             if 'X' not in self.hidden_dims:
                 obs['X'] = self.X
         else:
-            if 'P' not in self.hidden_dims:
-                obs['P'] = self.P[-1]
-            if 'L' not in self.hidden_dims:
-                obs['L'] = self.L[-1]
-            if 'W' not in self.hidden_dims:
-                obs['W'] = self.W[-1]
+            if 'H' not in self.hidden_dims:
+                obs['H'] = self.H[-1]
+            if 'V' not in self.hidden_dims:
+                obs['V'] = self.V[-1]
+            if 'D' not in self.hidden_dims:
+                obs['D'] = self.D[-1]
             if 'X' not in self.hidden_dims:
                 obs['X'] = self.X[-1] if len(self.X) > 0 else np.zeros(self.action_space.shape, dtype=np.float64)
 
@@ -130,95 +107,81 @@ class PointMazeSCM(SCM):
         env_obs, env_info = self._env.reset()
 
         self._t = 0
-        self.P = [self._P()]
-        self.L = [self._L()]
+        self.H = [self._H_val()]
+        self.V = [self._V_val()]
         self._U = [self._U_val()]
-        self.W = [self._W()]
+        self.D = [self._D_val()]
         self.X = []
         self._Y = []
 
         obs = self.observation(history=history)
         hiddens = {}
-        if 'P' in self.hidden_dims:
-            hiddens['P'] = self.P
-        if 'L' in self.hidden_dims:
-            hiddens['L'] = self.L
-        if 'W' in self.hidden_dims:
-            hiddens['W'] = self.W
+        if 'H' in self.hidden_dims:
+            hiddens['H'] = self.H
+        if 'V' in self.hidden_dims:
+            hiddens['V'] = self.V
+        if 'D' in self.hidden_dims:
+            hiddens['D'] = self.D
         if 'X' in self.hidden_dims:
             hiddens['X'] = self.X
 
         info = {'Y': self._Y, 'U': self._U, 'env_obs': env_obs, 'env_info': env_info, 'hidden_obs': hiddens}
         return obs, info
 
-    def action(self, P: List[NDArray[np.float64]], L: List[NDArray[np.float64]], W: List[NDArray[np.float64]]) -> ActType:
+    def action(self, H: List[NDArray[np.float64]], V: List[NDArray[np.float64]], D: List[NDArray[np.float64]]) -> ActType:
         # placeholder behavior policy
         return self.action_space.sample()
-    
+
     def compute_success(self) -> bool:
-        ag = np.asarray(self.P[-1], dtype=np.float64)
+        pos = self._position()
         dg = np.asarray(self._goal_xy, dtype=np.float64)
-        diff = ag - dg
-        dist = np.linalg.norm(diff)
+        dist = np.linalg.norm(pos - dg)
         return dist <= self.success_radius
 
     def _reward(self) -> float:
-        ag = np.asarray(self.P[-1], dtype=np.float64)
-        dg = np.asarray(self._goal_xy, dtype=np.float64)
-        diff = ag - dg
-        dist = np.linalg.norm(diff)
-
-        # wind penalty
-        u_norm = float(np.linalg.norm(self._U[-1]))
-        dist_norm = dist / 25.0 # approximate maze size
-        lambda_u = 1.0
-        wind_penalty = lambda_u * u_norm * (1.0 + dist_norm)
-
-        return float(self.compute_success()) - wind_penalty
+        u = float(self._U[-1])
+        return float(self.compute_success()) - 0.1 * u
 
     def step(self, action: Any, history: bool = False, show_reward: bool = True) -> Tuple[dict, float, bool, bool, dict]:
         # actions are float32, but observed actions need to be float64
         self.X.append(np.asarray(action, dtype=np.float64))
 
-        # apply wind and gust
+        # sample fog for this step
         u = self._U_val()
         self._U.append(u)
 
-        model = self._env.env.env.env.model
-        data = self._env.env.env.env.data
-
-        data.xfrc_applied[:] = 0.0 # reset last step's forces
-        torso_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'torso')
-        total_force = np.array([
-            u[0],
-            u[1],
-            0.0, # no z
-            0.0, 0.0, 0.0 # no torque
-        ], dtype=np.float64)
-        data.xfrc_applied[torso_id] = total_force
+        # fog applies a small random force (U -> H, V)
+        self._env.unwrapped.data.xfrc_applied[:] = 0.0
+        if u > 0:
+            model = self._env.unwrapped.model
+            data = self._env.unwrapped.data
+            torso_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, 'torso')
+            fx = float(u) * self.rng.normal(0.0, 0.2)
+            fy = float(u) * self.rng.normal(0.0, 0.2)
+            data.xfrc_applied[torso_id] = [fx, fy, 0, 0, 0, 0]
 
         # step environment
         env_obs, reward, _, truncated, env_info = self._env.step(action)
-        terminated = self.compute_success()
 
-        # update rest of SCM state
+        # update SCM state
         self._t += 1
-        self.P.append(self._P())
-        self.L.append(self._L())
-        self.W.append(self._W())
+        self.H.append(self._H_val())
+        self.V.append(self._V_val())
+        self.D.append(self._D_val())
 
+        terminated = self.compute_success()
         reward = self._reward()
         self._Y.append(reward)
 
         obs = self.observation(history=history)
 
         hiddens = {}
-        if 'P' in self.hidden_dims:
-            hiddens['P'] = self.P
-        if 'L' in self.hidden_dims:
-            hiddens['L'] = self.L
-        if 'W' in self.hidden_dims:
-            hiddens['W'] = self.W
+        if 'H' in self.hidden_dims:
+            hiddens['H'] = self.H
+        if 'V' in self.hidden_dims:
+            hiddens['V'] = self.V
+        if 'D' in self.hidden_dims:
+            hiddens['D'] = self.D
         if 'X' in self.hidden_dims:
             hiddens['X'] = self.X
 
@@ -233,24 +196,24 @@ class PointMazeSCM(SCM):
 
     @property
     def get_graph(self) -> Graph:
-        state_vars = ['P', 'L', 'W']
+        state_vars = ['H', 'V', 'D']
         variables = state_vars + ['X']
-        H = self.num_steps
-        n = H * len(variables) + len(state_vars) + 1
+        T = self.num_steps
+        n = T * len(variables) + len(state_vars) + 1
 
         nodes = {}
         i = 0
-        for t in range(H):
+        for t in range(T):
             for v in variables:
                 nodes[i] = f'{v}{t}'
                 i += 1
 
         # terminal state
         for v in state_vars:
-            nodes[i] = f'{v}{H}'
+            nodes[i] = f'{v}{T}'
             i += 1
 
-        nodes[i] = f'Y{H}' # ensures Y comes last in temporal ordering
+        nodes[i] = f'Y{T}' # ensures Y comes last in temporal ordering
 
         base_graph = [[0]*n for _ in range(n)]
         conf_graph = [[0]*n for _ in range(n)]
@@ -258,55 +221,64 @@ class PointMazeSCM(SCM):
         y = n - 1
 
         # intra-timestep edges
-        for step in range(H):
+        for step in range(T):
             base = step * len(variables)
-            p, l, w, x = base, base + 1, base + 2, base + 3
+            h, v, d, x = base, base + 1, base + 2, base + 3
 
-            base_graph[l][p] = 1 # linear velocity affects position
+            # d is surrogate of h
+            base_graph[h][d] = 1
 
-            # state influence decision-making
-            base_graph[l][x] = 1
-            base_graph[p][x] = 1
+            # state influences decision-making
+            base_graph[h][x] = 1
+            base_graph[v][x] = 1
 
-            base_graph[p][y] = 1 # reward is based on position
+            # position determines reward
+            base_graph[h][y] = 1
+            base_graph[v][y] = 1
 
-            # wind confounding
-            base_graph[l][w] = 1
-
-            conf_graph[w][y] = 1
-            conf_graph[p][y] = 1
-            conf_graph[w][p] = 1
+            # fog confounding: U -> {H, V, D, Y}
+            conf_graph[h][v] = 1
+            conf_graph[h][d] = 1
+            conf_graph[h][y] = 1
+            conf_graph[v][d] = 1
+            conf_graph[v][y] = 1
+            conf_graph[d][y] = 1
 
         # intra-timestep edges for terminal state
-        base_term = H * len(variables)
-        p, l, w, x = base_term, base_term + 1, base_term + 2, base_term + 3
+        base_term = T * len(variables)
+        h, v, d = base_term, base_term + 1, base_term + 2
 
-        base_graph[l][p] = 1 # linear velocity affects position
+        base_graph[h][d] = 1
 
-        base_graph[p][y] = 1 # reward is based on position
+        base_graph[h][y] = 1
+        base_graph[v][y] = 1
 
-        # wind confounding for terminal state
-        base_graph[l][w] = 1
+        conf_graph[h][v] = 1
+        conf_graph[h][d] = 1
+        conf_graph[h][y] = 1
+        conf_graph[v][d] = 1
+        conf_graph[v][y] = 1
+        conf_graph[d][y] = 1
 
-        conf_graph[w][y] = 1
-        conf_graph[p][y] = 1
-        conf_graph[w][p] = 1
-
-        # inter-timstep edges
-        for step in range(H):
+        # inter-timestep edges
+        for step in range(T):
             base = step * len(variables)
             base_next = (step + 1) * len(variables)
 
-            p, l, w, x = base, base + 1, base + 2, base + 3
-            p2, l2, w2, x2 = base_next, base_next + 1, base_next + 2, base_next + 3
+            h, v, d, x = base, base + 1, base + 2, base + 3
+            h2, v2, d2 = base_next, base_next + 1, base_next + 2
 
-            base_graph[x][l2] = 1 # linear force impacts linear velocity
-            base_graph[x][p2] = 1 # action impacts position
+            base_graph[x][h2] = 1 # action affects next horizontal position
+            base_graph[x][v2] = 1 # action affects next vertical position
 
             # state persistence
-            base_graph[p][p2] = 1
-            base_graph[l][l2] = 1
-            base_graph[x][x2] = 1
+            base_graph[h][h2] = 1
+            base_graph[v][v2] = 1
+
+            # action persistence
+            if step < T - 1:
+                x2 = base_next + 3
+                base_graph[x][x2] = 1
 
         nodes = [{'name': n} for n in nodes.values()]
         edges = []
@@ -321,7 +293,7 @@ class PointMazeSCM(SCM):
 
     @property
     def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
-        all_vars = ['P', 'L', 'W', 'X']
+        all_vars = ['H', 'V', 'D', 'X']
         observed = [v for v in all_vars if v not in self.hidden_dims]
         unobserved = list(self.hidden_dims) + ['U', 'Y']
         return observed, unobserved
@@ -340,20 +312,23 @@ class PointMazeExpert:
         self.success_radius = success_radius
         self._goal_xy = goal_xy
 
-        self.hidden_dims = set() if expert_mode else {'L'}
+        self.hidden_dims = set() if expert_mode else {'H'}
 
-        self.P = []
-        self.L = []
+        self.H = []
+        self.V = []
+        self.D = []
         self.X = []
         self._Y = []
 
     def observation(self) -> Dict[str, Any]:
         obs = {}
 
-        if 'P' not in self.hidden_dims:
-            obs['P'] = self.P
-        if 'L' not in self.hidden_dims:
-            obs['L'] = self.L
+        if 'H' not in self.hidden_dims:
+            obs['H'] = self.H
+        if 'V' not in self.hidden_dims:
+            obs['V'] = self.V
+        if 'D' not in self.hidden_dims:
+            obs['D'] = self.D
         if 'X' not in self.hidden_dims:
             obs['X'] = self.X
 
@@ -365,16 +340,17 @@ class PointMazeExpert:
             self._t = 0
             print('Warning: Expert trajectories exhausted. If this is a reset to begin do(), ignore this message.')
 
-        self.P = []
-        self.L = []
+        self.H = []
+        self.V = []
+        self.D = []
         self.X = []
         self._Y = []
 
     def _reward(self) -> float:
-        ag = np.asarray(self.P[-1], dtype=np.float64)
+        pos = np.array([self.H[-1][0], self.V[-1][0]], dtype=np.float64)
         dg = np.asarray(self._goal_xy, dtype=np.float64)
 
-        diff = ag - dg
+        diff = pos - dg
         dist = np.linalg.norm(diff)
 
         success = (dist <= self.success_radius).astype(np.float64)
@@ -387,18 +363,28 @@ class PointMazeExpert:
         terminated = self._expert_trajs['terminals'][self._t]
         truncated = False # never happens in an OGBench dataset
 
-        self.P.append(obs[0:3])
-        self.L.append(obs[15:18])
+        h = np.array([obs[0]], dtype=np.float64)
+        v = np.array([obs[1]], dtype=np.float64)
+
+        self.H.append(h)
+        self.V.append(v)
         self.X.append(action)
-        
+
+        # noisy surrogate of H
+        noise = self.rng.normal(0.0, 0.1)
+        d = np.array([h[0] + noise], dtype=np.float64)
+        self.D.append(d)
+
         reward = self._reward()
         self._Y.append(reward)
 
         hiddens = {}
-        if 'P' in self.hidden_dims:
-            hiddens['P'] = self.P
-        if 'L' in self.hidden_dims:
-            hiddens['L'] = self.L
+        if 'H' in self.hidden_dims:
+            hiddens['H'] = self.H
+        if 'V' in self.hidden_dims:
+            hiddens['V'] = self.V
+        if 'D' in self.hidden_dims:
+            hiddens['D'] = self.D
         if 'X' in self.hidden_dims:
             hiddens['X'] = self.X
 
@@ -417,12 +403,12 @@ class PointMazePCH(PCH):
         self.last_actor_is_expert = True
 
     def see(self, behavioral_policy=None, show_reward=True) -> Tuple[Any, Any, float, bool, bool, Dict[str, Any]]:
-        P = self.env.P
-        L = self.env.L
-        W = self.env.W
+        H = self.env.H
+        V = self.env.V
+        D = self.env.D
 
         if behavioral_policy is not None:
-            action = behavioral_policy(P, L, W)
+            action = behavioral_policy(H, V, D)
         else:
             return self.expert.step()
 
@@ -443,11 +429,11 @@ class PointMazePCH(PCH):
 
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
-        P = self.env.P
-        L = self.env.L
-        W = self.env.W
+        H = self.env.H
+        V = self.env.V
+        D = self.env.D
 
-        intuition = self.env.action(P, L, W)
+        intuition = self.env.action(H, V, D)
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition
@@ -471,3 +457,7 @@ class PointMazePCH(PCH):
     @property
     def get_graph(self) -> Graph:
         return self.env.get_graph
+
+    @property
+    def observed_unobserved_vars(self) -> Tuple[list[str], list[str]]:
+        return self.env.observed_unobserved_vars

@@ -33,10 +33,10 @@ class HumanoidMazeSCM(SCM):
     def __init__(
         self,
         env_id: str = 'humanoidmaze-medium-navigate-singletask-task1-v0',
-        num_steps: int = 1000,
+        num_steps: int = 2000,
         expert_mode: bool = False,
         custom_hidden: Optional[Set[str]] = None,
-        success_radius: float = 5.0,
+        success_radius: float = 10.0,
         seed: Optional[int] = None
     ):
         super().__init__()
@@ -461,9 +461,9 @@ class HumanoidMazeExpert:
     def __init__(
         self,
         env_id: str = 'humanoidmaze-medium-navigate-singletask-task1-v0',
-        num_steps: int = 1000,
+        num_steps: int = 2000,
         expert_mode: bool = False,
-        success_radius: float = 5.0,
+        success_radius: float = 10.0,
         goal_xy: np.ndarray = np.array([20.0, 20.0]),
         seed: Optional[int] = None
     ):
@@ -558,10 +558,10 @@ class HumanoidMazePCH(PCH):
     def __init__(
         self,
         env_id: str = 'humanoidmaze-medium-navigate-singletask-task1-v0',
-        num_steps: int = 1000,
+        num_steps: int = 2000,
         expert_mode: bool = False,
         custom_hidden: Optional[Set[str]] = None,
-        success_radius: float = 5.0,
+        success_radius: float = 10.0,
         seed: Optional[int] = None
     ):
         self.env = HumanoidMazeSCM(

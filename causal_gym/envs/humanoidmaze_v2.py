@@ -9,9 +9,13 @@ from causal_gym.core import ActType, Graph
 from gymnasium import spaces
 
 
-class HumanoidMazeSCM(SCM):
+class HumanoidMazeV2SCM(SCM):
     """
-    Confounded HumanoidMaze environment with latent seismic tremor.
+    Confounded HumanoidMaze environment with latent seismic tremor (V2).
+
+    V2 splits J into R (root body velocities, hidden) and J (hinge velocities).
+    This removes the velocity redundancy between J and C, making W the only
+    velocity proxy available to the imitator.
 
     Observation space (69D base + 2D W):
         P  (0-1):   2D  - XY maze position
@@ -20,12 +24,14 @@ class HumanoidMazeSCM(SCM):
         E  (24-35): 12D - Extremities (4 limbs x 3D egocentric)
         V  (36-38): 3D  - Torso vertical (up-vector)
         C  (39-41): 3D  - COM (center of mass) velocity (HIDDEN from imitator)
-        J  (42-68): 27D - Joint velocities (root 6D + hinges 21D)
+        R  (42-47): 6D  - Root body velocities (HIDDEN from imitator)
+        J  (48-68): 21D - Hinge joint velocities
         W  (new):   2D  - Noisy perceived ground vibration (observed by imitator)
         X  (action):21D - Joint torques
 
     Confounding:
         - C (COM velocity): Expert-only, important for navigation/course correction
+        - R (root velocities): Expert-only, redundant with C for velocity info
         - W (perceived vibration): Noisy proxy mixing C's XY velocity with tremor direction
         - U (seismic tremor): Latent, affects dynamics (shakes floor/pushes torso), W, and reward Y
     """
@@ -44,7 +50,7 @@ class HumanoidMazeSCM(SCM):
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
         self.expert_mode = expert_mode
-        self.hidden_dims = set() if expert_mode else {'C'}
+        self.hidden_dims = set() if expert_mode else {'C', 'R'}
         if custom_hidden is not None:
             self.hidden_dims = custom_hidden
         self._t = 0
@@ -61,7 +67,8 @@ class HumanoidMazeSCM(SCM):
         self.E = []  # extremities, 12D (4 limbs x 3D)
         self.V = []  # torso vertical, 3D (up-vector)
         self.C = []  # COM velocity, 3D (HIDDEN from imitator)
-        self.J = []  # joint velocities, 27D (root 6D + hinges 21D)
+        self.R = []  # root body velocities, 6D (HIDDEN from imitator)
+        self.J = []  # hinge joint velocities, 21D
         self.X = []  # action, 21D
         self._Y = [] # sparse reward
 
@@ -82,7 +89,8 @@ class HumanoidMazeSCM(SCM):
             'E': spaces.Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float64),
             'V': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
             'C': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float64),
-            'J': spaces.Box(low=-np.inf, high=np.inf, shape=(27,), dtype=np.float64),
+            'R': spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float64),
+            'J': spaces.Box(low=-np.inf, high=np.inf, shape=(21,), dtype=np.float64),
             'W': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64),
             'X': spaces.Box(low=act_low, high=act_high, shape=self.action_space.shape, dtype=np.float64)
         }
@@ -120,9 +128,13 @@ class HumanoidMazeSCM(SCM):
         """COM velocity (indices 39-41, 3D)."""
         return self._get_base_env().get_ob()[39:42].astype(np.float64)
 
+    def _R(self) -> NDArray[np.float64]:
+        """Root body velocities (indices 42-47, 6D)."""
+        return self._get_base_env().get_ob()[42:48].astype(np.float64)
+
     def _J(self) -> NDArray[np.float64]:
-        """Joint velocities (indices 42-68, 27D)."""
-        return self._get_base_env().get_ob()[42:69].astype(np.float64)
+        """Hinge joint velocities (indices 48-68, 21D)."""
+        return self._get_base_env().get_ob()[48:69].astype(np.float64)
 
     def _U_val(self) -> NDArray[np.float64]:
         """Compute seismic tremor value (piecewise-constant impulse process)."""
@@ -198,6 +210,8 @@ class HumanoidMazeSCM(SCM):
                 obs['V'] = self.V
             if 'C' not in self.hidden_dims:
                 obs['C'] = self.C
+            if 'R' not in self.hidden_dims:
+                obs['R'] = self.R
             if 'J' not in self.hidden_dims:
                 obs['J'] = self.J
             if 'W' not in self.hidden_dims:
@@ -217,6 +231,8 @@ class HumanoidMazeSCM(SCM):
                 obs['V'] = self.V[-1]
             if 'C' not in self.hidden_dims:
                 obs['C'] = self.C[-1]
+            if 'R' not in self.hidden_dims:
+                obs['R'] = self.R[-1]
             if 'J' not in self.hidden_dims:
                 obs['J'] = self.J[-1]
             if 'W' not in self.hidden_dims:
@@ -238,6 +254,7 @@ class HumanoidMazeSCM(SCM):
         self.E = [self._E()]
         self.V = [self._V()]
         self.C = [self._C()]
+        self.R = [self._R()]
         self.J = [self._J()]
         self._U = [self._U_val()]
         self.W = [self._W()]
@@ -246,14 +263,14 @@ class HumanoidMazeSCM(SCM):
 
         obs = self.observation(history=history)
         hiddens = {}
-        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'W', 'X']:
+        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'W', 'X']:
             if var in self.hidden_dims:
                 hiddens[var] = getattr(self, var)
 
         info = {'Y': self._Y, 'U': self._U, 'env_obs': env_obs, 'env_info': env_info, 'hidden_obs': hiddens}
         return obs, info
 
-    def action(self, P, A, H, E, V, C, J, W) -> ActType:
+    def action(self, P, A, H, E, V, C, R, J, W) -> ActType:
         """Placeholder behavior policy."""
         return self.action_space.sample()
 
@@ -310,6 +327,7 @@ class HumanoidMazeSCM(SCM):
         self.E.append(self._E())
         self.V.append(self._V())
         self.C.append(self._C())
+        self.R.append(self._R())
         self.J.append(self._J())
         self.W.append(self._W())
 
@@ -319,7 +337,7 @@ class HumanoidMazeSCM(SCM):
         obs = self.observation(history=history)
 
         hiddens = {}
-        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'W', 'X']:
+        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'W', 'X']:
             if var in self.hidden_dims:
                 hiddens[var] = getattr(self, var)
 
@@ -335,7 +353,7 @@ class HumanoidMazeSCM(SCM):
     @property
     def get_graph(self) -> Graph:
         """Build causal graph for the environment."""
-        state_vars = ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'W']
+        state_vars = ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'W']
         variables = state_vars + ['X']
         H = self.num_steps
         n = H * len(variables) + len(state_vars) + 1
@@ -362,18 +380,19 @@ class HumanoidMazeSCM(SCM):
         # Intra-timestep edges
         for step in range(H):
             base = step * len(variables)
-            p, a, h, e, v, c, j, w, x = (base + i for i in range(9))
+            p, a, h, e, v, c, r, j, w, x = (base + i for i in range(10))
 
             # Physical dependencies
-            base_graph[j][a] = 1  # Joint velocities affect joint angles
-            base_graph[j][c] = 1  # Joint velocities affect COM velocity
+            base_graph[r][a] = 1  # Root velocities affect joint angles
+            base_graph[r][c] = 1  # Root velocities affect COM velocity
+            base_graph[j][a] = 1  # Hinge velocities affect joint angles
             base_graph[a][v] = 1  # Joint angles affect torso vertical
             base_graph[a][e] = 1  # Joint angles affect extremities
             base_graph[a][h] = 1  # Joint angles affect head height
             base_graph[c][p] = 1  # COM velocity affects position
             base_graph[v][c] = 1  # Torso vertical affects COM velocity
-            base_graph[h][p] = 1  # TODO verify consistency
-            base_graph[e][p] = 1  # TODO verify consistency
+            base_graph[h][p] = 1
+            base_graph[e][p] = 1
 
             # State influences decision-making
             base_graph[p][x] = 1
@@ -382,6 +401,7 @@ class HumanoidMazeSCM(SCM):
             base_graph[e][x] = 1
             base_graph[v][x] = 1
             base_graph[c][x] = 1
+            base_graph[r][x] = 1
             base_graph[j][x] = 1
 
             # Reward depends on position
@@ -394,13 +414,15 @@ class HumanoidMazeSCM(SCM):
             conf_graph[w][y] = 1
             conf_graph[c][y] = 1
             conf_graph[w][c] = 1
+            conf_graph[r][y] = 1  # Tremor affects root velocities too
 
         # Terminal state edges
         base_term = H * len(variables)
-        p, a, h, e, v, c, j, w = (base_term + i for i in range(8))
+        p, a, h, e, v, c, r, j, w = (base_term + i for i in range(9))
 
+        base_graph[r][a] = 1
+        base_graph[r][c] = 1
         base_graph[j][a] = 1
-        base_graph[j][c] = 1
         base_graph[a][v] = 1
         base_graph[a][e] = 1
         base_graph[a][h] = 1
@@ -412,16 +434,18 @@ class HumanoidMazeSCM(SCM):
         conf_graph[w][y] = 1
         conf_graph[c][y] = 1
         conf_graph[w][c] = 1
+        conf_graph[r][y] = 1
 
         # Inter-timestep edges
         for step in range(H):
             base = step * len(variables)
             base_next = (step + 1) * len(variables)
 
-            p, a, h, e, v, c, j, w, x = (base + i for i in range(9))
-            p2, a2, h2, e2, v2, c2, j2, w2, x2 = (base_next + i for i in range(9))
+            p, a, h, e, v, c, r, j, w, x = (base + i for i in range(10))
+            p2, a2, h2, e2, v2, c2, r2, j2, w2, x2 = (base_next + i for i in range(10))
 
-            base_graph[x][j2] = 1  # Action affects joint velocities
+            base_graph[x][r2] = 1  # Action affects root velocities
+            base_graph[x][j2] = 1  # Action affects hinge velocities
 
             # State persistence
             base_graph[p][p2] = 1
@@ -430,6 +454,7 @@ class HumanoidMazeSCM(SCM):
             base_graph[e][e2] = 1
             base_graph[v][v2] = 1
             base_graph[c][c2] = 1
+            base_graph[r][r2] = 1
             base_graph[j][j2] = 1
             base_graph[x][x2] = 1
 
@@ -446,14 +471,14 @@ class HumanoidMazeSCM(SCM):
 
     @property
     def observed_unobserved_vars(self) -> Tuple[List[str], List[str]]:
-        all_vars = ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'W', 'X']
+        all_vars = ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'W', 'X']
         observed = [v for v in all_vars if v not in self.hidden_dims]
         unobserved = list(self.hidden_dims) + ['U', 'Y']
         return observed, unobserved
 
 
-class HumanoidMazeExpert:
-    """Expert trajectory loader for HumanoidMaze."""
+class HumanoidMazeV2Expert:
+    """Expert trajectory loader for HumanoidMaze V2."""
 
     def __init__(
         self,
@@ -476,7 +501,7 @@ class HumanoidMazeExpert:
         self.success_radius = success_radius
         self._goal_xy = goal_xy
 
-        self.hidden_dims = set() if expert_mode else {'C'}
+        self.hidden_dims = set() if expert_mode else {'C', 'R'}
 
         self.P = []
         self.A = []
@@ -484,13 +509,14 @@ class HumanoidMazeExpert:
         self.E = []
         self.V = []
         self.C = []
+        self.R = []
         self.J = []
         self.X = []
         self._Y = []
 
     def observation(self) -> Dict[str, Any]:
         obs = {}
-        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'X']:
+        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'X']:
             if var not in self.hidden_dims:
                 obs[var] = getattr(self, var)
         return obs
@@ -507,6 +533,7 @@ class HumanoidMazeExpert:
         self.E = []
         self.V = []
         self.C = []
+        self.R = []
         self.J = []
         self.X = []
         self._Y = []
@@ -532,14 +559,15 @@ class HumanoidMazeExpert:
         self.E.append(obs[24:36].astype(np.float64))
         self.V.append(obs[36:39].astype(np.float64))
         self.C.append(obs[39:42].astype(np.float64))
-        self.J.append(obs[42:69].astype(np.float64))
+        self.R.append(obs[42:48].astype(np.float64))
+        self.J.append(obs[48:69].astype(np.float64))
         self.X.append(action)
 
         reward = self._reward()
         self._Y.append(reward)
 
         hiddens = {}
-        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'J', 'X']:
+        for var in ['P', 'A', 'H', 'E', 'V', 'C', 'R', 'J', 'X']:
             if var in self.hidden_dims:
                 hiddens[var] = getattr(self, var)
 
@@ -549,8 +577,8 @@ class HumanoidMazeExpert:
         return self.observation(), reward, terminated, truncated, info
 
 
-class HumanoidMazePCH(PCH):
-    """Pearl Causal Hierarchy wrapper for HumanoidMaze."""
+class HumanoidMazeV2PCH(PCH):
+    """Pearl Causal Hierarchy wrapper for HumanoidMaze V2."""
 
     def __init__(
         self,
@@ -561,7 +589,7 @@ class HumanoidMazePCH(PCH):
         success_radius: float = 10.0,
         seed: Optional[int] = None
     ):
-        self.env = HumanoidMazeSCM(
+        self.env = HumanoidMazeV2SCM(
             env_id=env_id,
             num_steps=num_steps,
             expert_mode=expert_mode,
@@ -569,7 +597,7 @@ class HumanoidMazePCH(PCH):
             success_radius=success_radius,
             seed=seed
         )
-        self.expert = HumanoidMazeExpert(
+        self.expert = HumanoidMazeV2Expert(
             env_id=env_id,
             num_steps=num_steps,
             expert_mode=True,
@@ -589,11 +617,12 @@ class HumanoidMazePCH(PCH):
         E = self.env.E
         V = self.env.V
         C = self.env.C
+        R = self.env.R
         J = self.env.J
         W = self.env.W
 
         if behavioral_policy is not None:
-            action = behavioral_policy(P, A, H, E, V, C, J, W)
+            action = behavioral_policy(P, A, H, E, V, C, R, J, W)
         else:
             return self.expert.step()
 
@@ -620,10 +649,11 @@ class HumanoidMazePCH(PCH):
         E = self.env.E
         V = self.env.V
         C = self.env.C
+        R = self.env.R
         J = self.env.J
         W = self.env.W
 
-        intuition = self.env.action(P, A, H, E, V, C, J, W)
+        intuition = self.env.action(P, A, H, E, V, C, R, J, W)
         action = ctf_policy(self.env.observation(), intuition)
         obs, r, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = intuition

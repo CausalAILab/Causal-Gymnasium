@@ -37,13 +37,17 @@ class HumanoidMazeSCM(SCM):
         expert_mode: bool = False,
         custom_hidden: Optional[Set[str]] = None,
         success_radius: float = 10.0,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        confound_strength: float = 1.0
     ):
         super().__init__()
+
+        assert 0.0 <= confound_strength <= 1.0, 'confound_strength must be in [0, 1]'
 
         self.rng = np.random.default_rng(seed)
         self.num_steps = num_steps
         self.expert_mode = expert_mode
+        self.confound_strength = confound_strength # 0 = no train/test shift, 1 = full inversion (original "-w_raw")
         self.hidden_dims = set() if expert_mode else {'C'}
         if custom_hidden is not None:
             self.hidden_dims = custom_hidden
@@ -176,7 +180,14 @@ class HumanoidMazeSCM(SCM):
         w_raw = base + noise
 
         if not self.expert_mode:
-            w_raw = -w_raw  # Inverted sensor for imitator
+            # rotate w_raw by theta = confound_strength * pi: 0 -> identity (no train/test
+            # shift), 1 -> full 180 deg inversion, i.e. the original "-w_raw" backward sensor
+            theta = self.confound_strength * np.pi
+            cos_t, sin_t = np.cos(theta), np.sin(theta)
+            w_raw = np.array([
+                cos_t * w_raw[0] - sin_t * w_raw[1],
+                sin_t * w_raw[0] + cos_t * w_raw[1],
+            ], dtype=np.float64)
 
         w = np.tanh(w_raw)
         return w.astype(np.float64)
@@ -559,7 +570,8 @@ class HumanoidMazePCH(PCH):
         expert_mode: bool = False,
         custom_hidden: Optional[Set[str]] = None,
         success_radius: float = 10.0,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        confound_strength: float = 1.0
     ):
         self.env = HumanoidMazeSCM(
             env_id=env_id,
@@ -567,7 +579,8 @@ class HumanoidMazePCH(PCH):
             expert_mode=expert_mode,
             custom_hidden=custom_hidden,
             success_radius=success_radius,
-            seed=seed
+            seed=seed,
+            confound_strength=confound_strength
         )
         self.expert = HumanoidMazeExpert(
             env_id=env_id,

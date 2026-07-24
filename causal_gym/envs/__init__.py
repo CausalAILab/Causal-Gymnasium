@@ -34,7 +34,7 @@ register(
 
 register(
     id="causal_gym/WindyGridWorld-v0",
-    entry_point="causal_gym.envs:WindyGridWorldEnv",
+    entry_point="causal_gym.envs:WindyMiniGridPCH",
     max_episode_steps=None,
     disable_env_checker=True,
     order_enforce=False,
@@ -66,7 +66,7 @@ for env_name in SUPPORTED_ATARI_ENVS:
 
 register(
     id="causal_gym/MDPExample-v0",
-    entry_point="causal_gym.envs:MDPExamplePCH",
+    entry_point="causal_gym.envs:MDPPCH",
     max_episode_steps=None,
     disable_env_checker=True,
     order_enforce=False,

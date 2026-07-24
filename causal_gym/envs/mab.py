@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from gymnasium import spaces
 
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType, Task, Graph
@@ -46,6 +47,8 @@ class MABSCM(SCM):
         self.x = None
         self.y = None
         self.u = None  # Unmeasured confounder
+        self.action_space = spaces.Discrete(2)
+        self.observation_space = spaces.Discrete(1)
         
         # default behavioral policy - uniformly random
         self._policy = lambda u: int((0.8 + self.confounding_strength * u) > self.rng.random())
@@ -61,7 +64,10 @@ class MABSCM(SCM):
         # Sample confounder U ~ Uniform(0, 1)
         self.u = self.sample_u()
         
-        return None, {}
+        return self.observation(), {}
+
+    def observation(self):
+        return 0
     
     def action(self):
         """Sample action from the behavioral policy"""
@@ -95,10 +101,10 @@ class MABSCM(SCM):
             threshold = self.arms_probs[0] - D * action
             success_prob = threshold - self.confounding_strength * self.u
             
-        # Sample reward
+        success_prob = np.clip(success_prob, 0.0, 1.0)
         self.y = int(self.rng.random() < success_prob)
         
-        return None, self.y, True, False, {"arm": action, "reward": self.y}
+        return self.observation(), self.y, True, False, {"arm": action, "reward": self.y}
     
     def change_policy(self, new_policy):
         if new_policy != None:
@@ -109,17 +115,23 @@ class MABSCM(SCM):
     @property
     def get_graph(self):
         nodes = [
-            # {'name': 'U', 'label': 'Confounder', 'type': 'latent'},
             {'name': 'X', 'label': 'Action'},
             {'name': 'Y', 'label': 'Reward'}
         ]
 
         edges = [
             {'from_': 'X', 'to_': 'Y', 'type_': 'directed'},
-            {'from_': 'X', 'to_': "Y", 'type_': 'bidirected'}
         ]
+        if self.confounding_strength != 0:
+            edges.append({'from_': 'X', 'to_': "Y", 'type_': 'bidirected'})
         graph = Graph(nodes=nodes, edges=edges)
         return graph
+
+def _call_policy(policy, *args):
+    try:
+        return policy(*args)
+    except TypeError:
+        return policy()
 
 class MABPCH(PCH):
     """PCH wrapper for the MAB Example environment."""
@@ -140,7 +152,7 @@ class MABPCH(PCH):
         return o, r, term, trunc, info
     
     def do(self, do_policy):
-        action = do_policy()
+        action = _call_policy(do_policy, self.env.observation())
         o, r, term, trunc, info = self.env.step(action)
         info['action'] = action
         return o, r, term, trunc, info

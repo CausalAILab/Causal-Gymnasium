@@ -1,6 +1,7 @@
 from asyncio import set_event_loop_policy
 import math
 import numpy as np
+from gymnasium import spaces
 
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType, Task, Graph
@@ -40,13 +41,18 @@ class MDPSCM(SCM):
         self._u3 = lambda: self.rng.choice(2, p = [.9, .1])
         self.num_step = 0
         self._max_step = max_step
+        self.action_space = spaces.Discrete(2)
+        self.observation_space = spaces.Discrete(2)
 
     def reset(self, *, seed: int = None, options: dict = None) -> tuple[ObsType, dict]:
         self.rng = np.random.default_rng(seed)
         self.s = self.rng.choice(2, p = self.init_dist)
         self.num_step = 0
         # empty info
-        return self.s, {}
+        return self.observation(), {}
+
+    def observation(self):
+        return self.s
     
     def action(self, s: int, u1: int) -> int:
         """
@@ -128,7 +134,7 @@ class MDPPCH(PCH):
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
         u1, u2, u3 = self.env.sample_u()
-        intuition = self.env.action(self.env.s, self.env._u1())
+        intuition = self.env.action(self.env.s, u1)
         action = ctf_policy(self.env.s, intuition)
         obs, r, terminated, truncated, info = self.env.step(action, u1, u2, u3)
         info['natural_action'] = intuition

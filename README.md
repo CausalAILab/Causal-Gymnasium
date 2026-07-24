@@ -16,6 +16,21 @@ pip install -e .
 ```
 The editable install pulls in Gymnasium, highway-env, pygame, networkx and other dependencies defined in `setup.py`. Some environments download additional assets on first use (e.g. `MNISTSCM` fetches the MNIST dataset via `torchvision` and the Atari wrapper requires ALE ROMs).
 
+## Documentation
+- [Environment API contract](docs/environment_api.md): minimum interface expected from SCM and PCH environments.
+- [Testing](docs/testing.md): smoke tests, current coverage, and what still needs semantic tests.
+- [Maintenance reports](reports/maintenance/): plain-language reports explaining what changed, where the issue was, why it mattered, and how it was fixed.
+
+## Testing
+Run the lightweight API smoke tests before pushing maintenance changes:
+
+```bash
+source .venv/bin/activate
+MPLCONFIGDIR=/private/tmp/causal_gym_mpl XDG_CACHE_HOME=/private/tmp/causal_gym_cache python -m pytest tests/test_env_api_smoke.py -q
+```
+
+These tests check the basic environment API. They do not replace full experiment validation.
+
 ## Repository Layout
 ```text
 causalgym/
@@ -35,6 +50,8 @@ causalgym/
 ├── examples/                       # Notebooks and scripts demonstrating interventions & counterfactuals
 │   ├── test_*.ipynb                # Per-environment walkthroughs (Highway, FrozenLake, Atari,…)
 │   └── interactive_play.py         # Quick CLI for manual interaction
+├── docs/                           # API and testing documentation
+├── reports/maintenance/            # Plain-language maintenance reports
 ├── setup.py                        # Packaging metadata and dependency pins
 └── README.md                       # (this file)
 ```

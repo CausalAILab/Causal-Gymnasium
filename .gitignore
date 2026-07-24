@@ -2,6 +2,7 @@
 /build
 **/__pycache__/
 .vscode
+.venv/
 .hypothesis
 *.pyc
 *.egg-info/

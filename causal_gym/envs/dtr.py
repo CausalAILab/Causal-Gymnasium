@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from gymnasium import spaces
 
 from causal_gym import SCM, PCH
 from causal_gym.core import PolicyType, ActType, ObsType, Graph
@@ -57,6 +58,8 @@ class DTRSCM(SCM):
         # Default behavioral policy - can be overridden
         self._policy1 = lambda s1, u: int(3*s1 + self.a1*u + self._logistic() > 0)
         self._policy2 = lambda s1, x1, s2, u: int(3*s2 + self.a2*u + self._logistic() > 0)
+        self.action_space = spaces.Discrete(2)
+        self.observation_space = spaces.Discrete(2)
         
     def _logistic(self):
         """Sample from a logistic distribution"""
@@ -67,8 +70,8 @@ class DTRSCM(SCM):
         """Reset the environment to initial state"""
         self.rng = np.random.default_rng(seed)
         if self.u_distribution:
-            self.u = self.u_distribution
-            self.s1 = self.s1_function
+            self.u = self.u_distribution(self.rng) if callable(self.u_distribution) else self.u_distribution
+            self.s1 = self.s1_function(self.u, self.rng) if self.s1_function else int(self._logistic() > 0)
         else:
             # Unmeasured confounder U ~ Uniform(0, 1)
             self.u = self.rng.random() 
@@ -77,7 +80,14 @@ class DTRSCM(SCM):
 
         self.stage = 0
         
-        return self.s1, {"stage": self.stage}
+        return self.observation(), {"stage": self.stage}
+
+    def observation(self):
+        if self.stage == 0:
+            return self.s1
+        if self.stage == 1:
+            return self.s2
+        return 0
     
     def action(self):
         """Sample action from the behavioral policy based on current stage"""
@@ -103,7 +113,7 @@ class DTRSCM(SCM):
             # First stage: Assign initial treatment X1
             self.x1 = action
             if self.s2_function:
-                self.s2 = self.s2_function
+                self.s2 = self.s2_function(self.s1, self.x1, self.rng)
             else:
                 # Update patient's response to treatment (S2)
                 # S2 = I{0.1 + 0.1*S1 + 0.1*X1 + U4 > 0}
@@ -117,7 +127,7 @@ class DTRSCM(SCM):
             self.x2 = action
             
             if self.y_function:
-                self.y = self.y_function
+                self.y = self.y_function(self.s1, self.x1, self.s2, self.x2, self.u)
             else:
                 # Calculate outcome Y
                 # Y = I{3U - 3S1 - 3X1 - 3S1X1 + 3X2 - 3S2X2 + 3X1X2 > 0}
@@ -146,6 +156,7 @@ class DTRSCM(SCM):
     @property
     def get_graph(self):
         nodes = [
+            {'name': 'U', 'label': 'Latent patient type', 'type_': 'latent'},
             {'name': 'S1', 'label': 'Initial Condition'},
             {'name': 'X1', 'label': 'Initial Treatment'},
             {'name': 'S2', 'label': 'Treatment Response'},

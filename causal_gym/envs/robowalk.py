@@ -128,7 +128,7 @@ class RobotWalkPCH(PCH):
         action = do_policy((self.env.current_location, self.env.is_stable))
         state, reward, terminated, truncated, info = self.env.step(action)
         info['action'] = action
-        return state, reward, truncated, terminated, info
+        return state, reward, terminated, truncated, info
     
     # Counterfactual policy intervention
     def ctf_do(self, ctf_policy):
@@ -146,7 +146,7 @@ class RobotWalkPCH(PCH):
             action = see_policy((self.env.current_location, self.env.is_stable), self.env.ut)
         state, reward, terminated, truncated, info = self.env.step(action)
         info['natural_action'] = action
-        return state, reward, truncated, terminated, info
+        return state, reward, terminated, truncated, info
     
     @staticmethod
     def PolicyMapping(q_table: np.array):

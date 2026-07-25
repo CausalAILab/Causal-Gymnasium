@@ -400,7 +400,9 @@ class HighwaySCM(SCM):
                 fog[...,  3] = alpha
 
                 buf = fog.tobytes()
-                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA').convert_alpha()
+                # rgb_array mode has no display surface. The source buffer
+                # already contains per-pixel alpha, so conversion is not needed.
+                fog_surf = pygame.image.frombuffer(buf, (w, h), 'RGBA')
                 screen.blit(fog_surf, (0, 0))
 
             if getattr(self, 'L', []) and len(self.L) > 0:

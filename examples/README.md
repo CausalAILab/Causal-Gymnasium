@@ -1,3 +1,37 @@
+# Example notebooks
+
+## Notebook audit
+
+Last audited: **2026-07-25**. Each notebook was executed from its first cell in
+an independent `causal-gymnasium` kernel with headless SDL and a 180-second
+per-cell timeout. `Execution` only reports whether the notebook completes.
+`Output check` separately reports whether the result matches a stated theory
+target or, for visual/training examples, whether the generated behavior is
+reasonable. Random estimates use sampling tolerances rather than exact equality.
+Stored notebook outputs are not used as evidence; use **Restart/Run All** to
+refresh them in your local environment.
+
+| Notebook | Execution | Output check | Requirements | Known issue |
+| --- | --- | --- | --- | --- |
+| [AntMaze](test_antmaze.ipynb) | Pass | Flow pass; policy quality not evaluated | MuJoCo, OGBench, Stable-Baselines3 | Full training is intentionally outside this quick example |
+| [CartPole](test_cartpole.ipynb) | Pass | Pass (qualitative comparison) | Gymnasium classic-control, Matplotlib | — |
+| [CartPole visual](test_cartpole_visual.ipynb) | Pass | Visual behavior reasonable | Gymnasium classic-control, Matplotlib | — |
+| [DTR](test_dtr.ipynb) | Pass | Pass (two-stage mechanics and qualitative results) | Core, NumPy, Matplotlib | No strict numeric target is stated |
+| [FrozenLake](test_frozenlake.ipynb) | Pass | Visual/action behavior reasonable | Gymnasium toy-text, pygame | — |
+| [Highway](test_highway.ipynb) | Pass | Visual behavior reasonable; GIF generated | highway-env, pygame, Pillow | — |
+| [Highway single-step](test_highway_single_step.ipynb) | Pass | State/action behavior reasonable | highway-env, Matplotlib | — |
+| [Lava](test_lava.ipynb) | Pass | Visual transitions reasonable | MiniGrid, pygame, Matplotlib | — |
+| [LunarLander](test_lunar_lander.ipynb) | Pass | Episodes advance and animations render | Box2D, pygame, Matplotlib | — |
+| [MAB (Chapter 7)](<test_mab (Ch 7).ipynb>) | Pass | **Incorrect** | NumPy, Matplotlib, pandas, NetworkX | Public `MABSCM` reward mechanism differs from the textbook structural equation; deferred to a semantic branch |
+| [Masked Atari](test_masked_atari.ipynb) | **Blocked** | Not checked | ALE and a legally supplied Pong ROM | `pong.bin` is not installed |
+| [MDP (Chapter 7)](<test_mdp (Ch 7).ipynb>) | Pass | Pass (numeric, tolerance-based) | NumPy, Matplotlib, pandas, NetworkX | `MDPSCM` returns NumPy booleans; the notebook casts before array indexing |
+| [MNIST](test_mnist.ipynb) | Pass | Pass (mechanics; no strict numeric target) | PyTorch, torchvision, MNIST data, Matplotlib | First use may need a dataset download |
+| [MuJoCo random-friction Ant](test_mujoco_random_friction_ant.ipynb) | Pass | Render/rollout mechanics reasonable | MuJoCo, Matplotlib | Full algorithm performance is not evaluated |
+| [Race](test_race.ipynb) | Pass | Visual behavior reasonable; HTML animation generated | highway-env, pygame, Matplotlib | Upstream `racetrack-v0` emits a version deprecation warning |
+| [Windy MiniGrid](test_windyminigrid.ipynb) | Pass | Visual transitions reasonable | MiniGrid, pygame, Matplotlib | Uses `tostring_rgb`, supported by the pinned Matplotlib version but deprecated upstream |
+
+Detailed evidence and deferred issues are recorded in
+[`reports/maintenance/notebook_example_audit_2026-07-25.md`](../reports/maintenance/notebook_example_audit_2026-07-25.md).
 
 Each entry below names the environment, points to the source module, lists the primary classes, states the Gymnasium registration (when available), and summarises the causal twist it introduces. Environments are grouped by the type of simulator or abstraction they target.
 

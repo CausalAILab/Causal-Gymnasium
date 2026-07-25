@@ -1,8 +1,11 @@
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name="causal_gym",
     version="1.0.0",
+    packages=find_packages(
+        include=["causal_gym", "causal_gym.*"]
+    ),
     install_requires=[
         "gymnasium[all]>=0.29.1", 
         "pygame>=2.5.2", 

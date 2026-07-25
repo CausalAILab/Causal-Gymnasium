@@ -18,7 +18,6 @@ The editable install pulls in Gymnasium, highway-env, pygame, networkx and other
 
 ## Documentation
 - [Environment API contract](docs/environment_api.md): minimum interface expected from SCM and PCH environments.
-- [Testing](docs/testing.md): smoke tests, current coverage, and what still needs semantic tests.
 - [Maintenance reports](reports/maintenance/): plain-language reports explaining what changed, where the issue was, why it mattered, and how it was fixed.
 
 ## Testing
@@ -50,7 +49,7 @@ causalgym/
 ├── examples/                       # Notebooks and scripts demonstrating interventions & counterfactuals
 │   ├── test_*.ipynb                # Per-environment walkthroughs (Highway, FrozenLake, Atari,…)
 │   └── interactive_play.py         # Quick CLI for manual interaction
-├── docs/                           # API and testing documentation
+├── docs/                           # Environment API contract
 ├── reports/maintenance/            # Plain-language maintenance reports
 ├── setup.py                        # Packaging metadata and dependency pins
 └── README.md                       # (this file)

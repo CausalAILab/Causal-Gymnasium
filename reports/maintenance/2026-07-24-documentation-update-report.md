@@ -10,12 +10,13 @@ This round added clearer project documentation for maintenance work.
 
 The goal was to make the branch easier to review and easier to maintain later.
 
-The changes include:
+The final changes include:
 
-- Added a formal environment API contract document.
-- Added a testing document explaining the smoke tests.
-- Added README links to the new docs and maintenance reports.
-- Added a README testing command for the current lightweight smoke test.
+- Added a concise environment API contract.
+- Kept the smoke-test command and scope directly in the README.
+- Added README links to the API contract and maintenance reports.
+- Removed a separate testing document that duplicated the README, tests, and
+  maintenance report.
 
 ## 2. Where was the problem?
 
@@ -28,22 +29,18 @@ Before this change, the maintenance explanation mainly existed in:
 
 That was useful for planning, but not enough for people who open the repository later.
 
-The repository did not yet have a clear place explaining:
+The repository did not yet have a concise normative place explaining:
 
 - what API each environment should satisfy
 - why `action_space` and `observation_space` matter
 - why `ctf_do()` needs to reuse the same hidden context
-- what the smoke test checks
-- what the smoke test does not check
-- why heavy environments should be tested separately
+- what the smoke test validates at the API layer
 
 ## 3. Why was this a problem?
 
 This is a problem for maintenance and reproducibility.
 
 If the expected API is only known from conversation, then future contributors may not know what they are supposed to preserve.
-
-If the smoke test is added without explanation, reviewers may not know why it exists or why it does not cover every environment.
 
 If README does not link to the documentation, then the docs are easy to miss.
 
@@ -62,7 +59,7 @@ Added:
 docs/environment_api.md
 ```
 
-This document explains:
+This concise contract records only durable requirements:
 
 - the minimum SCM API
 - the minimum PCH API
@@ -71,23 +68,7 @@ This document explains:
 - preferred policy signatures
 - the counterfactual rule for `ctf_do()`
 - graph requirements
-- what counts as an API bug
-- current lightweight maintenance scope
-
-Added:
-
-```text
-docs/testing.md
-```
-
-This document explains:
-
-- why smoke tests are useful
-- what the current smoke test checks
-- why the earlier manual smoke test did not catch registry bugs
-- the difference between direct import path and Gymnasium registry path
-- test levels from import smoke tests to experiment-level tests
-- why heavy environments should be tested separately
+- the distinction between API checks and semantic tests
 
 Updated:
 
@@ -98,10 +79,11 @@ README.md
 The README now links to:
 
 - `docs/environment_api.md`
-- `docs/testing.md`
 - `reports/maintenance/`
 
-It also includes the command for running the lightweight API smoke test.
+It also contains the command and scope note for the lightweight API smoke
+test. Keeping that short operational guidance in the README avoids a second
+document that would become stale as test coverage changes.
 
 ## Verification
 

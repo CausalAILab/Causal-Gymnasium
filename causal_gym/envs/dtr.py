@@ -129,11 +129,12 @@ class DTRSCM(SCM):
             if self.y_function:
                 self.y = self.y_function(self.s1, self.x1, self.s2, self.x2, self.u)
             else:
-                # Calculate outcome Y
-                # Y = I{3U - 3S1 - 3X1 - 3S1X1 + 3X2 - 3S2X2 + 3X1X2 > 0}
-                outcome_prob = 3*self.u - 3*self.s1 - 3*self.x1 - 3*self.s1*self.x1 + \
-                            3*self.x2 - 3*self.s2*self.x2 + 3*self.x1*self.x2
-                self.y = int(outcome_prob > 0)
+                # The reference Q tables require the independent Logistic U5
+                # outcome disturbance. It is listed in the reference submodel's
+                # exogenous variables but omitted from the printed Y equation.
+                outcome_score = 3*self.u - 3*self.s1 - 3*self.x1 - 3*self.s1*self.x1 + \
+                            3*self.x2 - 3*self.s2*self.x2 + 3*self.x1*self.x2 + self._logistic()
+                self.y = int(outcome_score > 0)
             
             self.stage = 2
             return None, self.y, True, False, {
@@ -165,25 +166,24 @@ class DTRSCM(SCM):
         ]
 
         edges = [
-            # Direct causal relationships
             {'from_': 'S1', 'to_': 'X1', 'type_': 'directed'},
             {'from_': 'S1', 'to_': 'S2', 'type_': 'directed'},
             {'from_': 'X1', 'to_': 'S2', 'type_': 'directed'},
-            {'from_': 'S1', 'to_': 'X2', 'type_': 'directed'},
-            {'from_': 'X1', 'to_': 'X2', 'type_': 'directed'},
             {'from_': 'S2', 'to_': 'X2', 'type_': 'directed'},
             {'from_': 'S1', 'to_': 'Y', 'type_': 'directed'},
             {'from_': 'X1', 'to_': 'Y', 'type_': 'directed'},
             {'from_': 'S2', 'to_': 'Y', 'type_': 'directed'},
             {'from_': 'X2', 'to_': 'Y', 'type_': 'directed'},
-
-            # Bidirected edges representing unmeasured confounding through U
-            {'from_': 'U', 'to_': 'X1', 'type_': 'latent'},
-            {'from_': 'U', 'to_': 'X2', 'type_': 'latent'},
-            {'from_': 'U', 'to_': 'S1', 'type_': 'latent'},
-            {'from_': 'U', 'to_': 'S2', 'type_': 'latent'},
-            {'from_': 'U', 'to_': 'Y', 'type_': 'latent'}
+            {'from_': 'U', 'to_': 'Y', 'type_': 'directed'},
         ]
+
+        # The shared U enters a treatment mechanism only when its corresponding
+        # confounding coefficient is non-zero. S1 and S2 use independent
+        # logistic disturbances rather than this shared U.
+        if self.a1 != 0:
+            edges.append({'from_': 'U', 'to_': 'X1', 'type_': 'directed'})
+        if self.a2 != 0:
+            edges.append({'from_': 'U', 'to_': 'X2', 'type_': 'directed'})
         
         graph = Graph(nodes=nodes, edges=edges)
         return graph

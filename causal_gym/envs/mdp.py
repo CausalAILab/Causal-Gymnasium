@@ -76,7 +76,7 @@ class MDPSCM(SCM):
         # next state
         self.s = self.state_transition(u1, u2, self.s, x)
         # Return next state, reward, terminated, truncated, info
-        return self.s, self.y, False, self.num_step > self._max_step, {}
+        return self.s, self.y, False, self.num_step >= self._max_step, {}
     
     # Causal graph
     @property

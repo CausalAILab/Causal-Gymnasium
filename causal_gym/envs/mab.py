@@ -31,11 +31,15 @@ class MABSCM(SCM):
         Initialize the MAB environment
         
         Args:
-            confounding_strength: Strength of confounding between U -> X and U -> Y
+            confounding_strength: Probability that the action and reward
+                mechanisms share the same exogenous variable. ``0`` is
+                unconfounded and ``1`` is the Chapter 7 SCM.
 
-            arms_probs: Optional override for arm reward probabilities
-                       [p(Y=1|X=0), p(Y=1|X=1)] when confounding is disabled
+            arms_probs: Optional override for the two structural reward
+                thresholds [p(Y=1|do(X=0)), p(Y=1|do(X=1))].
         """
+        if not 0.0 <= confounding_strength <= 1.0:
+            raise ValueError("confounding_strength must be between 0 and 1")
         self.confounding_strength = confounding_strength
         
         # By default arm 0 has higher reward (0.4 vs 0.3)
@@ -43,15 +47,22 @@ class MABSCM(SCM):
             self.arms_probs = [0.4, 0.3]
         else:
             self.arms_probs = arms_probs
+
+        if len(self.arms_probs) != 2 or any(
+            probability < 0.0 or probability > 1.0
+            for probability in self.arms_probs
+        ):
+            raise ValueError("arms_probs must contain two probabilities in [0, 1]")
             
         self.x = None
         self.y = None
-        self.u = None  # Unmeasured confounder
+        self.u = None
+        self._reward_u = None
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Discrete(1)
         
-        # default behavioral policy - uniformly random
-        self._policy = lambda u: int((0.8 + self.confounding_strength * u) > self.rng.random())
+        # Physician's behavioral policy from Chapter 7: X <- I[U < 0.8].
+        self._policy = lambda u: int(u < 0.8)
 
     def sample_u(self):
         """Sample the unmeasured confounder U ~ Uniform(0, 1)"""
@@ -61,8 +72,19 @@ class MABSCM(SCM):
         """Reset the environment for a new stage"""
         self.rng = np.random.default_rng(seed)
         
-        # Sample confounder U ~ Uniform(0, 1)
+        # U drives the natural action. The reward uses the same U for a
+        # confounded unit and an independent draw otherwise. This mixture gives
+        # confounding_strength a continuous meaning while preserving the arm
+        # marginals under intervention.
         self.u = self.sample_u()
+        if self.confounding_strength == 1.0:
+            self._reward_u = self.u
+        elif self.confounding_strength == 0.0:
+            self._reward_u = self.sample_u()
+        elif self.rng.random() < self.confounding_strength:
+            self._reward_u = self.u
+        else:
+            self._reward_u = self.sample_u()
         
         return self.observation(), {}
 
@@ -89,20 +111,11 @@ class MABSCM(SCM):
         """
         self.x = action
         
-        # Determine reward based on arm choice and confounding
-        if self.confounding_strength == 0:
-            # No confounding - use fixed arm probabilities
-            success_prob = self.arms_probs[action]
-        else:
-            # With confounding - reward depends on both arm and confounder
-            # Using the mechanism from Example 7.1: Y ← I{U < 0.4 − D·X}
-            # where D controls the gap between arms
-            D = self.arms_probs[0] - self.arms_probs[1]  # Difference between arm probabilities
-            threshold = self.arms_probs[0] - D * action
-            success_prob = threshold - self.confounding_strength * self.u
-            
-        success_prob = np.clip(success_prob, 0.0, 1.0)
-        self.y = int(self.rng.random() < success_prob)
+        # Chapter 7 uses the structural equation Y <- I[U_Y < p_X]. It is a
+        # deterministic function of the already sampled exogenous context; it
+        # must not be interpreted as a probability and sampled a second time.
+        threshold = self.arms_probs[action]
+        self.y = int(self._reward_u < threshold)
         
         return self.observation(), self.y, True, False, {"arm": action, "reward": self.y}
     

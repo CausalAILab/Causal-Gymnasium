@@ -52,7 +52,7 @@ comment describing a standard behavioral policy.
 
 ### Theory-level verification
 
-The semantic tests verify exactly, on a deterministic grid:
+During development, a deterministic grid check verified:
 
 ```text
 P(X=0) = 0.2
@@ -89,10 +89,11 @@ the configured step.
 
 ### Theory-level verification
 
-Tests verify both the exact horizon and same-`u1` counterfactual invariant. The
-Chapter 7 MDP notebook was executed from a fresh kernel: all 22 code cells
-completed with no exception and produced five inline figures. Representative
-results were within Monte Carlo error of the notebook targets:
+Development checks verified both the exact horizon and same-`u1`
+counterfactual invariant. The Chapter 7 MDP notebook was executed from a fresh
+kernel: all 22 code cells completed with no exception and produced five inline
+figures. Representative results were within Monte Carlo error of the notebook
+targets:
 
 ```text
 behavioral daily profit: 0.1005, target 0.10
@@ -140,30 +141,32 @@ Q values within `0.001`:
 0.0007840943
 ```
 
-Tests also verify the unconfounded graph, conditionally active confounder
-edges, and independent outcome disturbance. The DTR notebook was executed
-from a fresh kernel: all six code cells completed with no exception and
-produced one inline figure. It is a workflow/comparison notebook rather than a
-strict reproduction of the Q table, so numerical correctness is established
-by the focused deterministic test instead of its random summary alone.
+Development checks also covered the unconfounded graph, conditionally active
+confounder edges, and independent outcome disturbance. The DTR notebook was
+executed from a fresh kernel: all six code cells completed with no exception
+and produced one inline figure. It is a workflow/comparison notebook rather
+than a strict reproduction of the Q table, so its random summary is not a
+strict numerical reproduction of the reference Q table.
 
 ## Verification
 
-Focused semantic and inherited API tests:
+Inherited API smoke tests:
 
 ```bash
 MPLCONFIGDIR=/private/tmp/causal_gym_mpl \
 XDG_CACHE_HOME=/private/tmp/causal_gym_cache \
 .venv/bin/python -m pytest \
-  tests/test_env_api_smoke.py \
-  tests/test_causal_semantics.py -q
+  tests/test_env_api_smoke.py -q
 ```
 
 Result:
 
 ```text
-34 passed
+13 passed
 ```
+
+Focused semantic checks were used during development, but the standalone
+`tests/test_causal_semantics.py` file is not retained on this branch.
 
 Fresh-kernel notebook verification used copies from
 `ey/notebook-example-maintenance`; executed copies were written only under

@@ -171,7 +171,7 @@ class HighwaySCM(SCM):
         front_vehicle = self._env.unwrapped.road.neighbour_vehicles(self._env.unwrapped.vehicle)[0]
 
         if front_vehicle is None:
-            return np.inf
+            return 0
 
         distance = front_vehicle.position[0] - ego.position[0] - front_vehicle.LENGTH / 2 - ego.LENGTH / 2
         return 1 if distance < DANGER_DISTANCE else 0
@@ -301,7 +301,7 @@ class HighwaySCM(SCM):
                 # detected lane reading anomaly, probably fog
                 drive_carefully = True
 
-        if I[-1] == 1 and D == 1:
+        if I[-1] == 1 and D[-1] == 1:
             return self._actions_reverse['SLOWER']
 
         if D[-1] == 1:

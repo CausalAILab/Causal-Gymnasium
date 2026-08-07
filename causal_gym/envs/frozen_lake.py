@@ -41,8 +41,10 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
         super().__init__()
         self.map_name = map_name
         self.is_slippery = is_slippery
+        wind_probabilities = self._normalize_probs(wind_probabilities)
         self.wind_probabilities = wind_probabilities
-        assert sum(wind_probabilities) == 1.0, "Wind probabilities must sum to 1."
+
+        assert np.sum(wind_probabilities) == 1.0, "Wind probabilities must sum to 1."
         assert len(wind_probabilities) == 5, "Wind probabilities must have 5 elements."
 
         # Base Gymnasium environment (primarily for P, desc, action/observation spaces)
@@ -117,6 +119,18 @@ class FrozenLakeSCM(SCM[PolicyType, ObsType, ActType]):
             raise ValueError("Goal 'G' not found in map description.")
 
         self.sample_u()
+
+    def _normalize_probs(self, probs: tuple[float, float, float, float, float], tol=1e-6) -> np.ndarray:
+        """Mitigates small floating point errors in probability sums."""
+        prob_array = np.array(probs, dtype=float)
+        prob_sum = prob_array.sum()
+        if prob_sum == 1.0:
+            return prob_array
+        elif np.isclose(prob_sum, 1.0, atol=tol): # tolerate small floating point errors
+            prob_array /= prob_array.sum() # ensure summing to 1
+            return prob_array
+        else:
+            raise ValueError("Provided probabilities do not sum to 1.")
 
     def _to_rc(self, s_idx: int) -> tuple[int, int]:
         """Converts a 1D state index to 2D row, col coordinates."""

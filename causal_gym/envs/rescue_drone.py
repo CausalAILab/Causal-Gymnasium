@@ -88,15 +88,25 @@ class RescueDroneSCM(SCM):
     if self.random_start:
       self.drone_pos = self.np_random.integers(self.grid_size, size=2)
 
+      # Match the initial Manhattan distance to the step budget.
+      distance = self.max_steps
       offsets = np.array([
-        [-2, 0], [-1, -1], [-1, 1],
-        [0, -2], [0, 2],
-        [1, -1], [1, 1], [2, 0],
+        [dx, dy]
+        for dx in range(-distance, distance + 1)
+        for dy in range(-distance, distance + 1)
+        if abs(dx) + abs(dy) == distance
       ])
 
       candidates = self.drone_pos + offsets
       inside = ((candidates >= 0) & (candidates < self.grid_size)).all(axis=1)
       candidates = candidates[inside]
+
+      if len(candidates) == 0:
+        raise ValueError(
+          f"No victim position at Manhattan distance {distance} "
+          f"from drone position {self.drone_pos.tolist()} "
+          f"in a {self.grid_size}x{self.grid_size} grid."
+        )
 
       index = self.np_random.integers(len(candidates))
       self.victim_pos = candidates[index].copy()
